@@ -1,0 +1,28 @@
+{
+  "name": "formio-cli",
+  "version": "0.0.1",
+  "description": "The Form.io Command Line Interface application.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.4.7",
+    "async": "^1.4.2",
+    "colors": "^1.1.2",
+    "commander": "^2.8.1",
+    "express": "4.12.3",
+    "formio-service": "0.0.2",
+    "fs-extra": "^0.24.0",
+    "github-download": "^0.4.0",
+    "lodash": "^3.10.1",
+    "progress": "^1.1.8",
+    "prompt": "^0.2.14",
+    "promptly": "^0.2.1",
+    "request": "^2.62.0",
+    "unzip": "^0.1.11",
+    "yargs": "^3.25.0"
+  }
+}
