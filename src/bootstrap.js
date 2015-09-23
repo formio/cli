@@ -5,7 +5,6 @@ module.exports = function(formio) {
     var extract = require('./extract')(formio);
     var project = require('./project')(formio);
     var serve = require('./serve')(formio);
-    var execute = require('./execute')(formio);
     return function(options, next) {
         options.path = options.param;
         async.series([
