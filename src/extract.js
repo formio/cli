@@ -24,15 +24,12 @@ module.exports = function(formio) {
             fs.removeSync(options.directory);
         }
 
-        // Create the directory.
-        fs.mkdirSync(options.directory);
-
         // Unzip the contents.
         console.log('\n');
         console.log('Extracting contents...');
         console.log('\n');
         var zip = new AdmZip(options.zipfile);
-        zip.extractAllTo(options.directory + '/', true);
+        zip.extractAllTo('', true);
         next();
     };
 };

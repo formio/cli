@@ -21,8 +21,23 @@ module.exports = function(formio) {
          * @param directory
          */
         create: function(options, next) {
-            if (!fs.existsSync(options.directory + '/template.json')) {
-                return next('Missing template.json file');
+
+            // Get the package json file.
+            var info = {};
+            try {
+                info = JSON.parse(fs.readFileSync(options.directory + '/package.json'));
+            }
+            catch (err) {
+                next(err);
+            }
+
+            // Change the document root if we need to.
+            if (info.formio && info.formio.docRoot) {
+                options.directory += '/' + info.formio.docRoot;
+            }
+
+            if (!fs.existsSync(options.directory + '/project.json')) {
+                return next('Missing project.json file');
             }
 
             if (!fs.existsSync(options.directory + '/config.template.js')) {
@@ -31,7 +46,7 @@ module.exports = function(formio) {
 
             var template = {};
             try {
-                template = JSON.parse(fs.readFileSync(options.directory + '/template.json'));
+                template = JSON.parse(fs.readFileSync(options.directory + '/project.json'));
             }
             catch (err) {
                 next(err);

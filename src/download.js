@@ -2,7 +2,6 @@ var http = require('http');
 var fs = require('fs-extra');
 var request = require('request');
 var ProgressBar = require('progress');
-var ghdownload = require('github-download');
 module.exports = function(formio) {
     return function(options, next) {
         if (!options.path) {
@@ -27,29 +26,59 @@ module.exports = function(formio) {
 
         // Set the project options.path.
         var projectUrl = (options.path.indexOf('https://github.com/') === 0) ? options.path : 'https://github.com/' + options.path;
+        var parts = projectUrl.split('#');
+        projectUrl = parts[0];
         var projectName = projectUrl.match(/\/([^/]*\/[^/]*$)/);
         if (projectName.length !== 2) {
             return next('Invalid GitHub project name');
         }
 
+        // Get the repo reference.
+        var ref = (parts.length > 1) ? parts[1] : 'master';
+
         // Set the project name to the matched text.
         projectName = projectName[1];
 
-        // Create the directory if it does not exist.
-        if (!options.directory) {
-            options.directory = projectName.replace('/', '-');
-        }
+        console.log('Downloading project...'.green);
 
-        if (fs.existsSync(options.directory + '.zip')) {
-            options.zipfile = options.directory + '.zip';
-            return next();
-        }
+        // Download the project.
+        var downloadError = null;
+        var bar = null;
+        request
+            .get('https://nodeload.github.com/' + projectName + '/zip/' + ref)
+            .on('response', function(res) {
 
-        // Perform the download.
-        ghdownload(options.path, options.directory)
-            .on('error', next)
-            .on('end', function() {
-                next();
+                // Setup the progress bar.
+                bar = new ProgressBar('  downloading [:bar] :percent :etas', {
+                    complete: '=',
+                    incomplete: ' ',
+                    width: 100,
+                    total: parseInt(res.headers['content-length'], 10)
+                });
+
+                // Get the attachment on the request.
+                var parts = res.headers['content-disposition'].split(/filename\s*\=\s*/);
+                if (parts.length > 1) {
+                    options.zipfile = parts[1];
+                    options.directory = options.zipfile.split('.')[0];
+                    res.pipe(fs.createWriteStream(options.zipfile, {
+                        flags: 'w'
+                    }));
+                    res.on('data', function (chunk) {
+                        if (bar) { bar.tick(chunk.length); }
+                    });
+                    res.on('error', function(err) {
+                        downloadError = err;
+                    });
+                    res.on('end', function() {
+                        setTimeout(function() {
+                            next(downloadError);
+                        }, 100);
+                    });
+                }
+                else {
+                    return next('No download file provided.');
+                }
             });
     };
 };
