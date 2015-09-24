@@ -1,10 +1,10 @@
 var async = require('async');
 var _ = require('lodash');
 module.exports = function(formio) {
-    var download = require('./download')(formio);
-    var extract = require('./extract')(formio);
-    var project = require('./project')(formio);
-    var serve = require('./serve')(formio);
+    var download = require(__dirname + '/download')(formio);
+    var extract = require(__dirname + '/extract')(formio);
+    var project = require(__dirname + '/project')(formio);
+    var serve = require(__dirname + '/serve')(formio);
     return function(options, next) {
         options.path = options.param;
         async.series([
