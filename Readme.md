@@ -16,12 +16,13 @@ Bootstrapping Applications
 You can bootstrap any Form.io application within GitHub easily with our one line bootstrap command. First find a
 repository that you wish to bootstrap.  Here are a few...
 
+ - https://github.com/formio/formio-app-todo
  - https://github.com/formio/formio-app-movie
 
 Then type the following
 
 ```
-formio bootstrap https://github.com/formio/formio-app-movie
+formio bootstrap formio/formio-app-todo
 ```
 
 This will ***download***, ***extract***, ***create***, ***configure*** and ***serve*** your application in one command!
