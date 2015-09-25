@@ -49,7 +49,10 @@ module.exports = function(formio) {
             request
                 .get('https://nodeload.github.com/' + projectName + '/zip/' + ref)
                 .on('response', function(res) {
-                    if (!res.headers.hasOwnProperty('content-disposition')) {
+                    if (
+                        !res.headers.hasOwnProperty('content-disposition') ||
+                        !parseInt(res.headers['content-length'], 10)
+                    ) {
                         if (tries++ > 3) { return next('Unable to download project.'); }
                         setTimeout(downloadProject, 200);
                         return;
