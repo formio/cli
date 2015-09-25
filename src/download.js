@@ -53,7 +53,7 @@ module.exports = function(formio) {
                         !res.headers.hasOwnProperty('content-disposition') ||
                         !parseInt(res.headers['content-length'], 10)
                     ) {
-                        if (tries++ > 3) { return next('Unable to download project.'); }
+                        if (tries++ > 3) { return next('Unable to download project. Please try again.'); }
                         setTimeout(downloadProject, 200);
                         return;
                     }
