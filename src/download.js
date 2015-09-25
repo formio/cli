@@ -43,24 +43,32 @@ module.exports = function(formio) {
 
         // Download the project.
         var downloadError = null;
+        var tries = 0;
         var bar = null;
-        request
-            .get('https://nodeload.github.com/' + projectName + '/zip/' + ref)
-            .on('response', function(res) {
+        (function downloadProject() {
+            request
+                .get('https://nodeload.github.com/' + projectName + '/zip/' + ref)
+                .on('response', function(res) {
+                    if (!res.headers.hasOwnProperty('content-disposition')) {
+                        if (tries++ > 3) { return next('Unable to download project.'); }
+                        setTimeout(downloadProject, 200);
+                        return;
+                    }
 
-                // Setup the progress bar.
-                bar = new ProgressBar('  downloading [:bar] :percent :etas', {
-                    complete: '=',
-                    incomplete: ' ',
-                    width: 100,
-                    total: parseInt(res.headers['content-length'], 10)
-                });
+                    // Setup the progress bar.
+                    bar = new ProgressBar('  downloading [:bar] :percent :etas', {
+                        complete: '=',
+                        incomplete: ' ',
+                        width: 100,
+                        total: parseInt(res.headers['content-length'], 10)
+                    });
 
-                // Get the attachment on the request.
-                var parts = res.headers['content-disposition'].split(/filename\s*\=\s*/);
-                if (parts.length > 1) {
-                    options.zipfile = parts[1];
-                    options.directory = options.zipfile.split('.')[0];
+                    var parts = res.headers['content-disposition'].split(/filename\s*\=\s*/);
+                    if (parts.length > 1) {
+                        options.zipfile = parts[1];
+                        options.directory = options.zipfile.split('.')[0];
+                    }
+
                     res.pipe(fs.createWriteStream(options.zipfile, {
                         flags: 'w'
                     }));
@@ -75,10 +83,7 @@ module.exports = function(formio) {
                             next(downloadError);
                         }, 100);
                     });
-                }
-                else {
-                    return next('No download file provided.');
-                }
-            });
+                });
+        })();
     };
 };
