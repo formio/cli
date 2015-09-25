@@ -1,5 +1,5 @@
-module.exports = function(formio, program, next) {
+module.exports = function(program, next) {
     return {
-        bootstrap: require('./bootstrap.js')(formio, program, next)
+        bootstrap: require('./bootstrap.js')(program, next)
     };
 };

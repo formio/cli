@@ -1,0 +1,20 @@
+var Formio = require('formio-service');
+module.exports = function(options) {
+    if (options.formio) {
+        return options.formio;
+    }
+
+    options.server = options.server || 'https://form.io';
+    var parts = options.server.split('://');
+    options.protocol = parts[0];
+    options.host = parts[1];
+
+    // Create the Form.io service.
+    options.formio = Formio({
+        formio: options.protocol + '://formio.' + options.host,
+        api: options.protocol + '://api.' + options.host
+    });
+
+    // Return the formio service.
+    return options.formio;
+};

@@ -1,5 +1,5 @@
 var series = require('../src/series');
-module.exports = function(formio, program, next) {
+module.exports = function(program, next) {
     program
         .version('0.0.1')
         .command('bootstrap [app]', 'Bootstrap an application')
@@ -9,8 +9,9 @@ module.exports = function(formio, program, next) {
         .option('-f, --force [force]', 'Force overwrite of any previous directories.')
         .option('-z, --zipfile [zipfile]', 'Bootstrap from a zip file.')
         .option('-p, --port [port]', 'The port you wish to serve the application.')
+        .option('-s, --server [server]', 'The server to use for deployment.')
         .action(series([
-            require('../src/authenticate')(formio),
-            require('../src/bootstrap')(formio)
+            require('../src/authenticate'),
+            require('../src/bootstrap')
         ], next));
 };
