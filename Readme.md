@@ -1,5 +1,5 @@
 The Form.io Command Line Interface
------------------------------------
+=================================
 This project is the command line interface for Form.io, which allows you to quickly bootstrap full working projects as
 well as interface with the Form.io API.
 

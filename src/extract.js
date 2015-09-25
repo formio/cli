@@ -25,9 +25,7 @@ module.exports = function(formio) {
         }
 
         // Unzip the contents.
-        console.log('\n');
         console.log('Extracting contents...');
-        console.log('\n');
         var zip = new AdmZip(options.zipfile);
         zip.extractAllTo('', true);
         next();

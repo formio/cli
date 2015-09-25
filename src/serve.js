@@ -4,7 +4,8 @@ module.exports = function(formio) {
     return function(options, next) {
         app.use(express.static(options.directory));
         options.port = options.port || 8081;
-        console.log('Serving application at http://localhost:' + options.port);
+        var location = 'http://localhost:' + options.port;
+        console.log('Serving application at ' + location.green);
         app.listen(options.port);
         next();
     };
