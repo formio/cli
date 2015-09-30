@@ -1,9 +1,5 @@
 require('colors');
-var fs = require('fs-extra');
 var program = require('commander');
-
-// Show welcome.
-require(__dirname + '/src/welcome/welcome');
 
 // Register all the commands.
 require(__dirname + '/commands/commands')(program, function(err) {
@@ -12,5 +8,9 @@ require(__dirname + '/commands/commands')(program, function(err) {
     }
 });
 
-// Parse the command line tool.
-program.parse(process.argv.splice(1));
+// Show welcome.
+require(__dirname + '/src/welcome/welcome')(function() {
+
+    // Parse the command line tool.
+    program.parse(process.argv.splice(1));
+});
