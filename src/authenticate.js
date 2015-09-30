@@ -7,6 +7,7 @@ prompt.start();
 module.exports = function(options, next) {
 
     // Get the formio server.
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     var formio = require('./formio')(options);
 
     // Let them know what is going on.
