@@ -11,21 +11,34 @@ Installation is easy... Simply type the following in your command line.
 npm install -g formio-cli
 ```
 
-Bootstrapping Applications
---------------------
-You can bootstrap any Form.io application within GitHub easily with our one line bootstrap command. First find a
-repository that you wish to bootstrap.  Here are a few...
+Commands
+-------------
 
- - https://github.com/formio/formio-app-todo
- - https://github.com/formio/formio-app-movie
- - https://github.com/formio/formio-app-formio
+ - ###Bootstrap
 
-Then type the following
+   ```
+   formio bootstrap [GitHub Project]
+   ```
 
-```
-formio bootstrap formio/formio-app-todo
-```
+   You can bootstrap any Form.io application within GitHub easily with our one line bootstrap command. First find a
+   repository that you wish to bootstrap.  Here are a few...
 
-This will ***download***, ***extract***, ***create***, ***configure*** and ***serve*** your application in one command!
+    - https://github.com/formio/formio-app-todo
+    - https://github.com/formio/formio-app-movie
+    - https://github.com/formio/formio-app-formio
 
-We will be pushing out more applications to help you easily get started with Form.io!
+   Example: If you wish to bootstrap the ToDo application, simply type the following in the command line.
+
+   ```
+   formio bootstrap formio/formio-app-todo
+   ```
+
+   This will ***download***, ***extract***, ***create***, ***configure*** and ***serve*** your application in one command!
+
+ - ###Serve
+
+   ```
+   formio serve [directory]
+   ```
+
+   This command will serve a directory (to localhost) that has already been boostrapped.

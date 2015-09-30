@@ -31,7 +31,7 @@ module.exports = function(program, next) {
                     options.directory += '/' + info.formio.docRoot;
                 }
 
-                // Move onto the next item. 
+                // Move onto the next item.
                 next();
             },
             require('../src/serve')
