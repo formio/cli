@@ -1,8 +1,8 @@
 var series = require('../src/series');
 module.exports = function(program, next) {
     program
-        .version('0.0.1')
-        .command('bootstrap [app]', 'Bootstrap an application')
+        .command('bootstrap [app]')
+        .description('Bootstrap a working application')
         .option('-d, --directory [directory]', 'The output directory of the application')
         .option('-u, --username [username]', 'The Form.io username to authenticate with')
         .option('--password [password]', 'The Form.io username password')

@@ -1,5 +1,6 @@
 require('colors');
 var program = require('commander');
+var pkg = require(__dirname + '/package.json');
 
 // Register all the commands.
 require(__dirname + '/commands/commands')(program, function(err) {
@@ -8,9 +9,12 @@ require(__dirname + '/commands/commands')(program, function(err) {
     }
 });
 
+// The version of the CLI.
+program.version(pkg.version);
+
 // Show welcome.
 require(__dirname + '/src/welcome/welcome')(function() {
 
     // Parse the command line tool.
-    program.parse(process.argv.splice(1));
+    program.parse(process.argv);
 });
