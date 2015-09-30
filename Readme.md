@@ -18,6 +18,7 @@ repository that you wish to bootstrap.  Here are a few...
 
  - https://github.com/formio/formio-app-todo
  - https://github.com/formio/formio-app-movie
+ - https://github.com/formio/formio-app-formio
 
 Then type the following
 
