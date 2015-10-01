@@ -26,6 +26,7 @@ Commands
     - https://github.com/formio/formio-app-todo
     - https://github.com/formio/formio-app-movie
     - https://github.com/formio/formio-app-formio
+    - https://github.com/formio/formio-app-salesquote
 
    Example: If you wish to bootstrap the ToDo application, simply type the following in the command line.
 
