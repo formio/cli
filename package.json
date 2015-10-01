@@ -1,6 +1,6 @@
 {
   "name": "formio-cli",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
