@@ -78,10 +78,10 @@ module.exports = {
         };
 
         // Determine if settings need to be loaded...
-        if (info.formio && info.formio.settings) {
+        if (template.settings) {
 
             // See if they need office 365 settings.
-            if (info.formio.settings.office365) {
+            if (template.settings.office365) {
 
                 // Get the office 365 settings.
                 var office365 = require('./office365')(template, function(err, template) {
