@@ -58,20 +58,40 @@ module.exports = {
 
         // Use a generated name.
         template.name = this.domain();
-        var params = {
-            path: template.name,
-            protocol: options.protocol ? options.protocol : 'https',
-            host: options.host ? options.host : 'form.io',
-            server: options.server ? options.server : 'https://form.io'
+
+        var createProject = function(template) {
+            var params = {
+                path: template.name,
+                protocol: options.protocol ? options.protocol : 'https',
+                host: options.host ? options.host : 'form.io',
+                server: options.server ? options.server : 'https://form.io'
+            };
+            console.log('Creating your project...');
+            var project = new formio.Project();
+            project.create(template).then(function() {
+                console.log('Project created');
+                var config = fs.readFileSync(options.directory + '/config.template.js');
+                var newConfig = nunjucks.renderString(config.toString(), params);
+                fs.writeFileSync(options.directory + '/config.js', newConfig);
+                next(null, template);
+            }).catch(next);
         };
-        console.log('Creating your project...');
-        var project = new formio.Project();
-        project.create(template).then(function() {
-            console.log('Project created');
-            var config = fs.readFileSync(options.directory + '/config.template.js');
-            var newConfig = nunjucks.renderString(config.toString(), params);
-            fs.writeFileSync(options.directory + '/config.js', newConfig);
-            next(null, template);
-        }).catch(next);
+
+        // Determine if settings need to be loaded...
+        if (info.formio && info.formio.settings) {
+
+            // See if they need office 365 settings.
+            if (info.formio.settings.office365) {
+
+                // Get the office 365 settings.
+                var office365 = require('./office365')(template, function(err, template) {
+                    if (err) { return next(err); }
+                    createProject(template);
+                });
+            }
+        }
+        else {
+            createProject(template);
+        }
     }
 };
