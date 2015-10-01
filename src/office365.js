@@ -62,7 +62,7 @@ module.exports = function(template, next) {
             console.log('Key Credentials:');
             console.log(JSON.stringify(json.keycred, null, 4).green);
             console.log('');
-            template.settings.office365.cert = json.cert;
+            template.settings.office365.cert = json.privateKey;
             template.settings.office365.thumbprint = json.fingerprint;
             next(null, template);
         });
