@@ -1,6 +1,6 @@
 {
   "name": "formio-cli",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "prompt": "^0.2.14",
     "promptly": "^0.2.1",
     "request": "^2.63.0",
+    "universal-analytics": "^0.3.9",
     "unzip": "^0.1.11",
     "yargs": "^3.25.0"
   }
