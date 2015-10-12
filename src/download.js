@@ -61,7 +61,7 @@ module.exports = function(options, next) {
                 bar = new ProgressBar('  downloading [:bar] :percent :etas', {
                     complete: '=',
                     incomplete: ' ',
-                    width: 100,
+                    width: 50,
                     total: parseInt(res.headers['content-length'], 10)
                 });
 
