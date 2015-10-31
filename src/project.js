@@ -70,6 +70,7 @@ module.exports = {
             var project = new formio.Project();
             project.create(template).then(function() {
                 console.log('Project created');
+                params.path = project.project.name;
                 var config = fs.readFileSync(options.directory + '/config.template.js');
                 var newConfig = nunjucks.renderString(config.toString(), params);
                 fs.writeFileSync(options.directory + '/config.js', newConfig);
