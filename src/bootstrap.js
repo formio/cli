@@ -5,7 +5,7 @@ var extract = require(__dirname + '/extract');
 var project = require(__dirname + '/project');
 var serve = require(__dirname + '/serve');
 module.exports = function(options, next) {
-    options.path = options.param;
+    options.path = options.params[0];
     async.series([
         _.partial(download, options),
         _.partial(extract, options),
