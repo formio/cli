@@ -38,10 +38,10 @@ module.exports = function(options, next) {
       if (pathParts.length > 0) {
         pathParts.shift();
       }
-      if (hostParts.length > 3 || (hostParts.length == 2 && hostParts[1] == 'localhost')) {
+      if (hostParts.length == 3 || (hostParts.length == 2 && hostParts[1] == 'localhost')) {
         options.projectName = hostParts.shift();
         urlObject.hostname = hostParts.join('.');
-        urlObject.host = urlObject.hostname + (urlObject.port != 80 ? ':' + urlObject.port : '');
+        urlObject.host = urlObject.hostname + (urlObject.port ? ':' + urlObject.port : '');
       }
       // Check if this is the format of http://server.com/project/{projectId}
       else if(pathParts.length > 1 && pathParts[0] == 'project') {
@@ -76,6 +76,7 @@ module.exports = function(options, next) {
     }
 
     steps.push(_.partial(authenticate, srcOptions));
+    steps.push(_.partial(checkProject, srcOptions));
     steps.push(_.partial(exportTemplate, srcOptions));
   }
 

@@ -4,6 +4,7 @@ module.exports = function(options, next) {
   var template = options.template;
 
   // If project exists, this is an update.
+  console.log('Importing Template');
   if (options.projectId) {
     console.log('Updating Project');
     var formioProject = new formio.Project(options.project);

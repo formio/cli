@@ -33,7 +33,9 @@ module.exports = function (options, next) {
     }
 
     // First authenticate.
+    console.log('Authenticating to ' + options.server);
     formio.authenticate(options.username, options.password).then(function () {
+      console.log('Authentication successful');
       next();
     }).catch(next);
   }
