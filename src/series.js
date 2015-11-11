@@ -5,9 +5,8 @@ module.exports = function(series, next) {
 
         // The action arguments.
         var args = Array.prototype.slice.call(arguments);
-        var param = args.shift();
-        var options = args.shift();
-        options.param = param;
+        var options = args.pop();
+        options.params = args;
         var actionSeries = [];
         _.each(series, function(action) {
             actionSeries.push(_.partial(action, options));

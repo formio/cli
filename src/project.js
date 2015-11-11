@@ -1,6 +1,8 @@
 var fs = require('fs-extra');
 var nunjucks = require('nunjucks');
 nunjucks.configure([], {watch: false});
+var _ = require('lodash');
+
 module.exports = {
     /**
      * Generate a random domain for the project.
@@ -67,10 +69,25 @@ module.exports = {
                 server: options.server ? options.server : 'https://form.io'
             };
             console.log('Creating your project...');
-            var project = new formio.Project();
-            project.create(template).then(function() {
+
+            template.settings = template.settings || {};
+            if (!template.settings.cors) {
+                template.settings.cors = '*';
+            }
+
+            // Create a project from a template.
+            var project = {
+                title: template.title,
+                description: template.description,
+                name: template.name,
+                template: _.omit(template, 'title', 'description', 'name'),
+                settings: template.settings
+            };
+
+            var formioProject = new formio.Project();
+            formioProject.create(project).then(function() {
                 console.log('Project created');
-                params.path = project.project.name;
+                params.path = formioProject.project.name;
                 var config = fs.readFileSync(options.directory + '/config.template.js');
                 var newConfig = nunjucks.renderString(config.toString(), params);
                 fs.writeFileSync(options.directory + '/config.js', newConfig);
