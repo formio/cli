@@ -1,20 +1,9 @@
-module.exports = function(options, next) {
+module.exports = function(options) {
     var method = options.params[0];
-    var url = options.params[1];
-    var parts = url.split('://');
-    var subparts = parts[1].split('/');
-    var hostparts = subparts[0].split('.');
-    if (
-        (hostparts.length > 2) ||
-        ((hostparts.length > 1) && hostparts[1].indexOf('localhost') !== -1)
-    ) {
-        hostparts.shift();
-    }
-    options.server = parts[0] + '://' + hostparts.join('.');
     var formio = require('../src/formio')(options);
-    var project = new formio.Project(parts[0] + '://' + subparts[0]);
+    var project = new formio.Project(options.projectUrl);
     project.load().then(function() {
-        project.bind(subparts[1], method, function(err, data) {
+        project.bind(options.formName, method, function(err, data) {
             if (err) {
                 console.log(err.red);
             }
