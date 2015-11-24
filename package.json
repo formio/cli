@@ -17,7 +17,7 @@
     "colors": "^1.1.2",
     "commander": "^2.8.1",
     "express": "4.12.3",
-    "formio-service": "^0.0.4",
+    "formio-service": "git+https://git@github.com/formio/formio-service.git",
     "fs-extra": "^0.24.0",
     "keycred": "0.0.3",
     "lodash": "^3.10.1",
