@@ -1,7 +1,7 @@
 var series = require('../src/series');
 module.exports = function(program, next) {
     program
-        .command('bind [method] [url]')
+        .command('bind [method] [url] [middleware]')
         .description('Bind to a form via websockets.')
         .option('-s, --server [server]', 'The server to use for binding.')
         .option('-u, --username [username]', 'The Form.io username to authenticate with')
