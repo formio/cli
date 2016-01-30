@@ -9,7 +9,7 @@ module.exports = function(options) {
     var formio = require('../src/formio')(options);
     var project = new formio.Project(options.projectUrl);
     project.load().then(function() {
-        project.bind(options.formName, method, function(err, data, res) {
+        project.bind(options.formPath, method, function(err, data, res) {
             if (err) {
                 console.log(err.red);
             }

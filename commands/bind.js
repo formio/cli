@@ -20,7 +20,7 @@ module.exports = function(program, next) {
                 }
                 options.server = parts[0] + '://' + hostparts.join('.');
                 options.projectUrl = parts[0] + '://' + subparts[0];
-                options.formName = subparts[1];
+                options.formPath = subparts[1];
                 next();
             },
             require('../src/authenticate'),
