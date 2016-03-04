@@ -1,6 +1,6 @@
 {
   "name": "formio-cli",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
@@ -17,7 +17,7 @@
     "colors": "^1.1.2",
     "commander": "^2.8.1",
     "express": "4.12.3",
-    "formio-service": "^0.0.6",
+    "formio-service": "^1.0.0",
     "fs-extra": "^0.24.0",
     "keycred": "0.0.3",
     "lodash": "^3.10.1",
