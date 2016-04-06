@@ -70,7 +70,7 @@ Commands
  - ###Copy
 
     ```
-    formio copy [form] [src] [dest]
+    formio copy form [src] [dest]
     ```
 
     This command will copy the components of a form into another form. **This will overwrite all components within the destination form if that form exists**.
