@@ -1,8 +1,10 @@
+'use strict';
+
 var async = require('async');
 var formioUtils = require('formio-utils');
 var _ = require('lodash');
-module.exports = function(options, next) {
 
+module.exports = function(options, next) {
   // Get the form.io service.
   var formio = require('./formio')(options);
   var type = options.params[0];
@@ -51,7 +53,10 @@ module.exports = function(options, next) {
         done();
       }).catch(done);
     }, function(err) {
-      if (err) { return next(err); }
+      if (err) {
+        return next(err);
+      }
+
       console.log('Saving components to destination form ' + dest);
       var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
       if (parts.length < 4) {

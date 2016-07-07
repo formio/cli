@@ -1,12 +1,13 @@
+'use strict';
+
 var fs = require('fs');
 
-module.exports = function (options, next) {
+module.exports = function(options, next) {
   try {
     options.template = JSON.parse(fs.readFileSync(options.project));
-    next();
+    return next();
   }
   catch (err) {
-    next(err);
+    return next(err);
   }
-
 };

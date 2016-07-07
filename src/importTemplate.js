@@ -1,13 +1,18 @@
+'use strict';
+
 var _ = require('lodash');
+
 module.exports = function(options, next) {
   var formio = require('./formio')(options);
   var template = options.template;
 
   // If project exists, this is an update.
   console.log('Importing Template');
+  var formioProject = null;
+
   if (options.projectId) {
     console.log('Updating Project');
-    var formioProject = new formio.Project(options.project);
+    formioProject = new formio.Project(options.project);
     formioProject.read(options.projectId).then(function() {
       var project = formioProject.project;
       _.assign(project, {
@@ -25,7 +30,7 @@ module.exports = function(options, next) {
   // Project doesn't yet exist. Create it.
   else {
     console.log('Creating Project');
-    var formioProject = new formio.Project();
+    formioProject = new formio.Project();
     template.settings = template.settings || {};
     if (!template.settings.cors) {
       template.settings.cors = '*';

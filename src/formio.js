@@ -1,5 +1,8 @@
+'use strict';
+
 var Formio = require('formio-service');
-module.exports = function (options) {
+
+module.exports = function(options) {
   if (options.formio) {
     return options.formio;
   }
