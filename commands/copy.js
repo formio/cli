@@ -1,4 +1,7 @@
+'use strict';
+
 var series = require('../src/series');
+
 module.exports = function(program, next) {
   program
     .command('copy <type> <source> <destination>')

@@ -1,4 +1,7 @@
+'use strict';
+
 var series = require('../src/series');
+
 module.exports = function(program, next) {
   program
     .command('deploy <source> <destination>')
@@ -8,6 +11,6 @@ module.exports = function(program, next) {
     .option('--dst-username [username]', 'The destination username to authenticate with')
     .option('--dst-password [password]', 'The destination password')
     .action(series([
-        require('../src/deploy')
+      require('../src/deploy')
     ], next));
 };
