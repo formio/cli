@@ -1,9 +1,11 @@
+'use strict';
+
 module.exports = function(program, next) {
-    return {
-        bootstrap: require('./bootstrap.js')(program, next),
-        deploy: require('./deploy.js')(program, next),
-        serve: require('./serve.js')(program, next),
-        bind: require('./bind.js')(program, next),
-        copy: require('./copy.js')(program, next)
-    };
+  return {
+    bootstrap: require('./bootstrap.js')(program, next),
+    deploy: require('./deploy.js')(program, next),
+    serve: require('./serve.js')(program, next),
+    bind: require('./bind.js')(program, next),
+    copy: require('./copy.js')(program, next)
+  };
 };

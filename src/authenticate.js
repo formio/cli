@@ -1,12 +1,15 @@
+'use strict';
+
 /**
  * Provides a way to authenticate commands against Form.io
  */
 var _ = require('lodash');
 var prompt = require('prompt');
 prompt.start();
-module.exports = function (options, next) {
+
+module.exports = function(options, next) {
   // Get the formio server.
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   var formio = require('./formio')(options);
 
   // Let them know what is going on.
@@ -23,7 +26,7 @@ module.exports = function (options, next) {
    * @param password
    * @private
    */
-  var authExecute = function () {
+  var authExecute = function() {
     if (!options.username) {
       return next('Username is required to authenticate.');
     }
@@ -34,18 +37,17 @@ module.exports = function (options, next) {
 
     // First authenticate.
     console.log('Authenticating to ' + options.server);
-    formio.authenticate(options.username, options.password).then(function () {
+    formio.authenticate(options.username, options.password).then(function() {
       console.log('Authentication successful');
       next();
     }).catch(next);
-  }
+  };
 
   // If they provide the username and password.
   if (options.hasOwnProperty('username') && options.hasOwnProperty('password')) {
     authExecute();
   }
   else {
-
     var properties = {};
     if (!options.username) {
       properties.username = {
@@ -63,7 +65,7 @@ module.exports = function (options, next) {
     }
 
     // First authenticate into Form.io.
-    prompt.get({properties: properties}, function (err, result) {
+    prompt.get({properties: properties}, function(err, result) {
       if (err) {
         return next(err);
       }
