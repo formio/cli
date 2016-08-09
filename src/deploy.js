@@ -66,6 +66,11 @@ module.exports = function(options, next) {
   var dstOptions = _.clone(options);
   dstOptions.project = options.params[1];
   dstOptions = getServerOptions(dstOptions);
+  // If using the same destination server, allow using the same credentials.
+  if (srcOptions.server === dstOptions.server) {
+    dstOptions.username = dstOptions.srcUsername;
+    dstOptions.password = dstOptions.srcPassword;
+  }
   if (dstOptions.dstUsername && dstOptions.dstPassword) {
     dstOptions.username = dstOptions.dstUsername;
     dstOptions.password = dstOptions.dstPassword;
