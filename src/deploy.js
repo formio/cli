@@ -7,29 +7,9 @@ var loadTemplate = require(__dirname + '/loadTemplate');
 var authenticate = require(__dirname + '/authenticate');
 var exportTemplate = require(__dirname + '/exportTemplate');
 var importTemplate = require(__dirname + '/importTemplate');
-var checkProject = require(__dirname + '/checkProject');
 
 module.exports = function(options, next) {
   var steps = [];
-
-  //var setOptions = function(options, serverOptions, done) {
-  //  // Reset everything so we can authenticate against a new server.
-  //  delete options.host;
-  //  delete options.protocol;
-  //  delete options.primary;
-  //  delete options.username;
-  //  delete options.password;
-  //  delete options.formio;
-  //  if (options.hasOwnProperty(part + 'Username')) {
-  //    options.username = options[part + 'Username'];
-  //  }
-  //  if (options.hasOwnProperty(part + 'Password')) {
-  //    options.password = options[part + 'Password'];
-  //  }
-  //  var index = (part === 'src' ? 0 : 1);
-  //
-  //  done();
-  //};
 
   var getServerOptions = function(options) {
     if (options.project.indexOf('http') === 0) {
@@ -80,7 +60,6 @@ module.exports = function(options, next) {
     }
 
     steps.push(_.partial(authenticate, srcOptions));
-    steps.push(_.partial(checkProject, srcOptions));
     steps.push(_.partial(exportTemplate, srcOptions));
   }
 
@@ -98,7 +77,6 @@ module.exports = function(options, next) {
   }, srcOptions, dstOptions));
   // Authenticate again to the destination.
   steps.push(_.partial(authenticate, dstOptions));
-  steps.push(_.partial(checkProject, dstOptions));
   steps.push(_.partial(importTemplate, dstOptions));
   async.series(steps, next);
 };

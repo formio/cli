@@ -10,14 +10,12 @@ module.exports = function(options, next) {
   console.log('Importing Template');
   var formioProject = null;
 
-  if (options.projectId) {
-    console.log('Updating Project');
-    formioProject = new formio.Project(options.project);
-    formioProject.read(options.projectId).then(function() {
+  formioProject = new formio.Project(options.project);
+  formioProject.load(options.project)
+    .then(function() {
+      console.log('Updating Project');
       var project = formioProject.project;
       _.assign(project, {
-        title: template.title,
-        description: template.description,
         template: _.omit(template, 'title', 'description', 'name'),
         settings: template.settings
       });
@@ -25,29 +23,32 @@ module.exports = function(options, next) {
         console.log('Project Updated');
         next();
       }).catch(next);
-    }).catch(next);
-  }
-  // Project doesn't yet exist. Create it.
-  else {
-    console.log('Creating Project');
-    formioProject = new formio.Project();
-    template.settings = template.settings || {};
-    if (!template.settings.cors) {
-      template.settings.cors = '*';
-    }
+    })
+    .catch(function(err) {
+      // If the project doesn't exist, lets create it. Otherwise just throw the error.
+      if (!err.response.error || err.response.error.status !== 500) {
+        return next(err);
+      }
 
-    // Create a project from a template.
-    var project = {
-      title: template.title,
-      description: template.description,
-      name: template.name,
-      template: _.omit(template, 'title', 'description', 'name'),
-      settings: template.settings
-    };
+      console.log('Creating Project');
+      formioProject = new formio.Project();
+      template.settings = template.settings || {};
+      if (!template.settings.cors) {
+        template.settings.cors = '*';
+      }
 
-    formioProject.create(project).then(function() {
-      console.log('Project Created');
-      next();
-    }).catch(next);
-  }
+      // Create a project from a template.
+      var project = {
+        title: template.title,
+        description: template.description,
+        name: template.name,
+        template: _.omit(template, 'title', 'description', 'name'),
+        settings: template.settings
+      };
+
+      formioProject.create(project).then(function() {
+        console.log('Project Created');
+        next();
+      }).catch(next);
+    });
 };
