@@ -68,6 +68,7 @@ module.exports = function(options, next) {
       (new formio.Project(project)).form(parts[3]).then(function(form) {
         if (form) {
           form.form.components = components;
+          form.form.tags = source.tags;
           form.save().then(function() {
             console.log('Done!');
             next();
@@ -79,6 +80,7 @@ module.exports = function(options, next) {
             name: _.camelCase(parts[3]),
             path: parts[3],
             type: source.type,
+            tags: source.tags,
             components: components
           }).then(function() {
             console.log('Done!');
