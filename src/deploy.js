@@ -54,7 +54,10 @@ module.exports = function(options, next) {
     // Remove any trailing slash.
     srcOptions.project.replace(/\/$/, '');
     srcOptions = getServerOptions(srcOptions);
-    if (srcOptions.srcUsername && srcOptions.srcPassword) {
+    if (srcOptions.srcKey) {
+      srcOptions.key = srcOptions.srcKey;
+    }
+    else if (srcOptions.srcUsername && srcOptions.srcPassword) {
       srcOptions.username = srcOptions.srcUsername;
       srcOptions.password = srcOptions.srcPassword;
     }
@@ -68,10 +71,14 @@ module.exports = function(options, next) {
   dstOptions = getServerOptions(dstOptions);
   // If using the same destination server, allow using the same credentials.
   if (srcOptions.server === dstOptions.server) {
+    dstOptions.key = dstOptions.srcKey;
     dstOptions.username = dstOptions.srcUsername;
     dstOptions.password = dstOptions.srcPassword;
   }
-  if (dstOptions.dstUsername && dstOptions.dstPassword) {
+  if (dstOptions.dstKey) {
+    dstOptions.key = dstOptions.dstKey;
+  }
+  else if (dstOptions.dstUsername && dstOptions.dstPassword) {
     dstOptions.username = dstOptions.dstUsername;
     dstOptions.password = dstOptions.dstPassword;
   }

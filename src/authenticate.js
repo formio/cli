@@ -14,6 +14,14 @@ module.exports = function(options, next) {
 
   // Let them know what is going on.
   console.log('');
+
+  // If the API Key is provided.
+  if (options.key) {
+    console.log('An API Key was provided. Authenticated as Project Owner.');
+    console.log('');
+    return next();
+  }
+
   console.log('This action requires a login to '.green + options.server.green + '.'.green);
   if (options.server === 'https://form.io') {
     console.log('You can create a free account by going to https://portal.form.io/#/auth/register'.green);

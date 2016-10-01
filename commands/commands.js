@@ -6,6 +6,7 @@ module.exports = function(program, next) {
     deploy: require('./deploy.js')(program, next),
     serve: require('./serve.js')(program, next),
     bind: require('./bind.js')(program, next),
-    copy: require('./copy.js')(program, next)
+    copy: require('./copy.js')(program, next),
+    migrate: require('./migrate.js')(program, next)
   };
 };

@@ -7,6 +7,7 @@ module.exports = function(program, next) {
     .command('bind [method] [url] [middleware]')
     .description('Bind to a form via websockets.')
     .option('-s, --server [server]', 'The server to use for binding.')
+    .option('-k, --key [key]', 'An API Key for your project')
     .option('-u, --username [username]', 'The Form.io username to authenticate with')
     .option('--password [password]', 'The Form.io username password')
     .action(series([
