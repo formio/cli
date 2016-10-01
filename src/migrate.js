@@ -23,7 +23,7 @@ module.exports = function(options, next) {
 
   try {
     // Require the transformer.
-    transformer = require(transformer);
+    transformer = require(process.cwd() + '/' + transformer);
   }
   catch (err) {
     console.log(err);
@@ -36,7 +36,7 @@ module.exports = function(options, next) {
   // Determine the stream based on the source type.
   var stream = null;
   if (src.substr(-4) === '.csv') {
-    stream = fs.createReadStream(src).pipe(parse());
+    stream = fs.createReadStream(process.cwd() + '/' + src).pipe(parse());
   }
   else {
     var requestHeaders = {
