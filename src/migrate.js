@@ -75,6 +75,7 @@ module.exports = function(options, next) {
         // Submit to the destination form.
         destForm.submit(transformed).then(function(response) {
           if (parseInt(response.statusCode / 100, 10) != 2) {
+            console.log('');
             console.log('Invalid Record');
             console.log(transformed);
           }
