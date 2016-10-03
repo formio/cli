@@ -65,9 +65,11 @@ Commands
        return next();
      }
      next(null, {
-       firstName: record[0],
-       lastName: record[1],
-       email: record[2]
+       data: {
+         firstName: record[0],
+         lastName: record[1],
+         email: record[2]
+       }
      });
    };
    ```
