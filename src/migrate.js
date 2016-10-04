@@ -39,8 +39,8 @@ module.exports = function(options, next) {
     }
   }
 
-  var destFormio = options.destKey ? Formio({
-    key: options.destKey
+  var destFormio = options.dstKey ? Formio({
+    key: options.dstKey
   }) : options.formio;
 
   // Create a form object.
