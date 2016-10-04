@@ -24,6 +24,7 @@
     "formio-utils": "^0.1.9",
     "fs-extra": "^0.24.0",
     "keycred": "0.0.3",
+    "lodash": "^4.16.3",
     "nunjucks": "^2.5.2",
     "progress": "^1.1.8",
     "prompt": "^0.2.14",

@@ -1,5 +1,6 @@
 'use strict';
 var fs = require('fs');
+var Formio = require('formio-service');
 var parse = require('csv-parse');
 var JSONStream = require('JSONStream');
 var transform = require('stream-transform');
@@ -30,8 +31,12 @@ module.exports = function(options, next) {
     return;
   }
 
+  var destFormio = options.destKey ? Formio({
+    key: options.destKey
+  }) : options.formio;
+
   // Create a form object.
-  var destForm = new options.formio.Form(dest);
+  var destForm = new destFormio.Form(dest);
 
   // Determine the stream based on the source type.
   var stream = null;
@@ -42,7 +47,10 @@ module.exports = function(options, next) {
     var requestHeaders = {
       'content-type': 'application/json'
     };
-    if (options.key) {
+    if (options.srcKey) {
+      requestHeaders['x-token'] = options.srcKey;
+    }
+    else if (options.key) {
       requestHeaders['x-token'] = options.key;
     }
     else if (
