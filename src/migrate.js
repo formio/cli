@@ -5,10 +5,11 @@ var parse = require('csv-parse');
 var JSONStream = require('JSONStream');
 var transform = require('stream-transform');
 var request = require('request');
+var formTransform = require('./transforms/form');
 module.exports = function(options, next) {
   var src = options.params[0];
-  var transformer = options.params[1];
-  var dest = options.params[2];
+  var transformer = (options.params.length === 2) ? 'form' : options.params[1];
+  var dest = (options.params.length === 2) ? options.params[1] : options.params[2];
 
   if (!src) {
     return next('You must provide a source form or CSV to copy.');
@@ -22,13 +23,20 @@ module.exports = function(options, next) {
     return next('You must provide a destination form.');
   }
 
-  try {
-    // Require the transformer.
-    transformer = require(process.cwd() + '/' + transformer);
+  // If they provide a form as the transform, then just use the form
+  // transform.
+  if (transformer === 'form') {
+    transformer = formTransform;
   }
-  catch (err) {
-    console.log(err);
-    return;
+  else {
+    try {
+      // Require the transformer.
+      transformer = require(process.cwd() + '/' + transformer);
+    }
+    catch (err) {
+      console.log(err);
+      return;
+    }
   }
 
   var destFormio = options.destKey ? Formio({
