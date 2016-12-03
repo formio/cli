@@ -9,10 +9,12 @@ module.exports = function(program, next) {
     .option('-p, --protocol [protocol]', 'Change the protocol.')
     .option('-h, --host [host]', 'Set the host for the copy.')
     .option('-k, --key [key]', 'An API Key for your project')
+    .option('-k, --dst-key [key]', 'An API Key for your project')
     .option('--username [username]', 'The source username to authenticate with')
     .option('--password [password]', 'The source password')
+    .option('--dst-username [username]', 'The source username to authenticate with')
+    .option('--dst-password [password]', 'The source password')
     .action(series([
-      require('../src/authenticate'),
       require('../src/copy')
     ], next));
 };
