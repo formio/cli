@@ -159,34 +159,39 @@ module.exports = function(options, next) {
 
     // Load the form (if it exists)
     var project = parts[1] + parts[2];
-    (new formio.Project(project)).form(parts[3]).then(function(form) {
-      if (form) {
-        console.log('Updating existing form');
-        form.form.components = dst.components;
-        form.form.tags = dst.tags;
-        form.save().then(function() {
-          console.log('Done!');
-          next();
-        }).catch(next);
-      }
-      else {
-        console.log('Creating new form');
-        (new formio.Form(project + '/form')).create({
-          title: 'Copy of ' + source.title,
-          name: _.camelCase(parts[3]),
-          path: parts[3],
-          type: type,
-          tags: dstOptions.tags,
-          components: components
-        }).then(function() {
-          console.log('Done!');
-          next();
-        }).catch(function(err) {
-          console.log(err);
-          next(err);
-        });
-      }
-    });
+    (new formio.Project(project)).form(parts[3])
+      .then(function(form) {
+        if (form) {
+          console.log('Updating existing form');
+          form.form.components = dst.components;
+          form.form.tags = dst.tags;
+          form.save().then(function() {
+            console.log('Done!');
+            next();
+          }).catch(next);
+        }
+        else {
+          console.log('Creating new form');
+          (new formio.Form(project + '/form')).create({
+            title: 'Copy of ' + source.title,
+            name: _.camelCase(parts[3]),
+            path: parts[3],
+            type: type,
+            tags: dstOptions.tags,
+            components: components
+          }).then(function() {
+            console.log('Done!');
+            next();
+          }).catch(function(err) {
+            console.log(err);
+            next(err);
+          });
+        }
+      })
+      .catch(function(err) {
+        console.log(error);
+        next(err);
+      });
   }, dstOptions));
 
   async.series(steps, next);
