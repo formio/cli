@@ -8,7 +8,7 @@ var _ = require('lodash');
 
 module.exports = function(options, next) {
   // Get the form.io service.
-  var formio = require('./formio')(options);
+  var formio;
   var type = options.params[0];
   var src = options.params[1].split(',');
   var dest = options.params[2];
@@ -98,10 +98,12 @@ module.exports = function(options, next) {
 
   // Load forms.
   steps.push(_.partial(function(srcOptions, next) {
+    formio = require('./formio')(srcOptions)
     if (type === 'form' || type === 'resource') {
       var components = [];
       var tags = [];
       var keys = {};
+      var title = '';
       var source = {};
       async.eachSeries(src, function(formUrl, done) {
         console.log('Loading form ' + formUrl);
@@ -125,6 +127,7 @@ module.exports = function(options, next) {
           // Append the components.
           tags = tags.concat(source.tags);
           components = components.concat(source.components);
+          title = source.title;
           done();
         }).catch(done);
       }, function(err) {
@@ -133,6 +136,7 @@ module.exports = function(options, next) {
         }
         srcOptions.tags = tags;
         srcOptions.components = components;
+        srcOptions.title = title;
         next();
       });
     }
@@ -142,6 +146,9 @@ module.exports = function(options, next) {
   steps.push(_.partial(function(src, dst, next) {
     dst.tags = src.tags;
     dst.components = src.components;
+    dst.title = src.title;
+
+    // This will force another authentication.
     delete dst.formio;
     next();
   }, srcOptions, dstOptions));
@@ -151,6 +158,7 @@ module.exports = function(options, next) {
 
   // Save to new form
   steps.push(_.partial(function(dst, next) {
+    formio = require('./formio')(dst);
     console.log('Saving components to destination ' + type + ' ' + dest);
     var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
     if (parts.length < 4) {
@@ -172,13 +180,21 @@ module.exports = function(options, next) {
         }
         else {
           console.log('Creating new form');
-          (new formio.Form(project + '/form')).create({
-            title: 'Copy of ' + source.title,
+          console.log({
+            title: 'Copy of ' + dst.title,
             name: _.camelCase(parts[3]),
             path: parts[3],
             type: type,
-            tags: dstOptions.tags,
-            components: components
+            tags: dst.tags,
+            components: dst.components
+          });
+          (new formio.Project(project)).createForm({
+            title: 'Copy of ' + dst.title,
+            name: _.camelCase(parts[3]),
+            path: parts[3],
+            type: type,
+            tags: dst.tags,
+            components: dst.components
           }).then(function() {
             console.log('Done!');
             next();
@@ -189,7 +205,7 @@ module.exports = function(options, next) {
         }
       })
       .catch(function(err) {
-        console.log(error);
+        console.log(err);
         next(err);
       });
   }, dstOptions));
