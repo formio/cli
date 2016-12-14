@@ -23,6 +23,10 @@ module.exports = function(options, next) {
     return next('You must provide a destination form.');
   }
 
+  if (!options.formio) {
+    return next('No Form.io server provided');
+  }
+
   // If they provide a form as the transform, then just use the form
   // transform.
   if (transformer === 'form') {
@@ -39,34 +43,27 @@ module.exports = function(options, next) {
     }
   }
 
-  var destFormio = options.dstKey ? Formio({
-    key: options.dstKey
-  }) : options.formio;
-
   // Create a form object.
-  var destForm = new destFormio.Form(dest);
+  var destForm = new options.formio.Form(dest);
 
   // Determine the stream based on the source type.
   var stream = null;
   if (src.substr(-4) === '.csv') {
     stream = fs.createReadStream(process.cwd() + '/' + src).pipe(parse());
   }
-  else {
+  else if (options.srcFormio) {
     var requestHeaders = {
       'content-type': 'application/json'
     };
-    if (options.srcKey) {
-      requestHeaders['x-token'] = options.srcKey;
-    }
-    else if (options.key) {
-      requestHeaders['x-token'] = options.key;
+    if (options.srcFormio.apiKey) {
+      requestHeaders['x-token'] = options.srcFormio.apiKey;
     }
     else if (
-      options.formio &&
-      options.formio.currentUser &&
-      options.formio.currentUser.token
+      options.srcFormio &&
+      options.srcFormio.currentUser &&
+      options.srcFormio.currentUser.token
     ) {
-      requestHeaders['x-jwt-token'] = options.formio.currentUser.token;
+      requestHeaders['x-jwt-token'] = options.srcFormio.currentUser.token;
     }
     stream = request({
       method: 'GET',
@@ -78,30 +75,31 @@ module.exports = function(options, next) {
 
   // Pipe the stream through the transform.
   stream.pipe(transform(function(record, next) {
-      transformer(record, function(err, transformed) {
-        if (err) {
-          console.log(err);
-          return next(err);
-        }
+    transformer(record, function(err, transformed) {
+      if (err) {
+        console.log(err);
+        return next(err);
+      }
 
-        if (!transformed) {
-          return next();
-        }
+      if (!transformed) {
+        return next();
+      }
 
-        // Submit to the destination form.
-        destForm.submit(transformed).then(function(response) {
-          if (parseInt(response.statusCode / 100, 10) != 2) {
-            console.log('');
-            console.log('Invalid Record');
-            console.log(transformed);
-          }
-          else {
-            process.stdout.write('.');
-          }
-          next();
-        }, next);
-      });
-    }, {parallel: 1}));
+      // Submit to the destination form.
+      destForm.submit(transformed).then(function(response) {
+        if (parseInt(response.statusCode / 100, 10) != 2) {
+          console.log('');
+          console.log(response.body);
+          console.log(transformed);
+          return next(response.body)
+        }
+        else {
+          process.stdout.write('.');
+        }
+        next();
+      }).catch(next);
+    });
+  }));
 
   // Log when we have an error.
   stream.on('error', function(err){
@@ -110,6 +108,7 @@ module.exports = function(options, next) {
 
   // Move on when the stream closes.
   stream.on('close', function(){
+    console.log('Done!');
     return next();
   });
 };

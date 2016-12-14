@@ -27,7 +27,9 @@ module.exports = function(program, next) {
         options.formPath = subparts[1];
         next();
       },
-      require('../src/authenticate'),
+      require('../src/authenticate')({
+        dst: 1
+      }),
       require('../src/bind')
     ], next));
 };

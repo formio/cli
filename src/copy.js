@@ -6,112 +6,43 @@ var formioUtils = require('formio-utils');
 var authenticate = require(__dirname + '/authenticate');
 var _ = require('lodash');
 
-module.exports = function(options, next) {
-  // Get the form.io service.
-  var formio;
+module.exports = function(options, done) {
   var type = options.params[0];
-  var src = options.params[1].split(',');
+  var src = options.params[1];
   var dest = options.params[2];
 
   if (!type) {
-    return next('You must provide a type.');
+    return done('You must provide a type.');
   }
 
   if (!src.length) {
-    return next('You must provide a source form to copy.');
+    return done('You must provide a source form to copy.');
   }
 
   if (!dest) {
-    return next('You must provide a destination.');
+    return done('You must provide a destination.');
   }
 
-  var getServer = function(path) {
-    var parts = path.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
-    if (parts.length >= 2) {
-      return parts[2];
-    }
-    return '';
+  var destForm = {
+    components: [],
+    tags: [],
+    title: ''
   };
-
-  var getServerOptions = function(path, options) {
-    if (path.indexOf('http') === 0) {
-      var urlObject = url.parse(path);
-      // Check if this is the format of http://project.server.com or http://project.localhost
-      var hostParts = urlObject.hostname.split('.');
-      var pathParts = urlObject.pathname.split('/');
-      // Always starts with an empty element. Throw it away.
-      if (pathParts.length > 0) {
-        pathParts.shift();
+  async.series([
+    // Load the form.
+    function(next) {
+      if (!options.srcFormio) {
+        return next('Cannot find the source server.');
       }
-      if (hostParts.length === 3 || (hostParts.length === 2 && hostParts[1] === 'localhost')) {
-        options.projectName = hostParts.shift();
-        urlObject.hostname = hostParts.join('.');
-        urlObject.host = urlObject.hostname + (urlObject.port ? ':' + urlObject.port : '');
-      }
-      // Check if this is the format of http://server.com/project/{projectId}
-      else if (pathParts.length > 1 && pathParts[0] === 'project') {
-        options.projectId = pathParts[1];
-      }
-      urlObject.path = urlObject.pathname = '';
-      options.server = url.format(urlObject);
-      options.host = urlObject.host;
-      // Slice gets rid of the ":" at the end.
-      options.protocol = urlObject.protocol.slice(0, -1);
-    }
-    else {
-      options.projectName = options.project;
-      options.project = 'https://' + options.project + '.form.io';
-    }
-
-    return options;
-  }
-
-  // Set up the steps.
-  var steps = [];
-
-  var srcOptions = _.clone(options);
-  getServerOptions(src[0], srcOptions);
-  var dstOptions = _.clone(options);
-  getServerOptions(dest, dstOptions);
-  // If using the same destination server, allow using the same credentials.
-  if (srcOptions.server === dstOptions.server) {
-    dstOptions.key = options.key;
-    dstOptions.username = options.username;
-    dstOptions.password = options.password;
-  }
-  else {
-    // If servers don't match, clear out the source credentials.
-    delete dstOptions.username;
-    delete dstOptions.password;
-    delete dstOptions.key;
-  }
-  if (dstOptions.dstKey) {
-    dstOptions.key = dstOptions.dstKey;
-  }
-  else if (dstOptions.dstUsername && dstOptions.dstPassword) {
-    dstOptions.username = dstOptions.dstUsername;
-    dstOptions.password = dstOptions.dstPassword;
-  }
-  getServerOptions(dest, dstOptions);
-
-  steps.push(_.partial(authenticate, srcOptions));
-
-  // Load forms.
-  steps.push(_.partial(function(srcOptions, next) {
-    formio = require('./formio')(srcOptions)
-    if (type === 'form' || type === 'resource') {
-      var components = [];
-      var tags = [];
-      var keys = {};
-      var title = '';
-      var source = {};
-      async.eachSeries(src, function(formUrl, done) {
-        console.log('Loading form ' + formUrl);
-        (new formio.Form(formUrl)).load().then(function(form) {
-          source = form.toJson();
+      if (type === 'form' || type === 'resource') {
+        console.log('Loading form ' + src);
+        var formObj = new options.srcFormio.Form(src);
+        formObj.load().then(function() {
+          var form = formObj.toJson();
+          var keys = {};
 
           // Ensure each component has a unique key.
-          formioUtils.eachComponent(source.components, function(component) {
+          formioUtils.eachComponent(form.components, function(component) {
             if (component.key) {
               var i = 0;
               var key = component.key;
@@ -125,90 +56,60 @@ module.exports = function(options, next) {
           });
 
           // Append the components.
-          tags = tags.concat(source.tags);
-          components = components.concat(source.components);
-          title = source.title;
-          done();
-        }).catch(done);
-      }, function(err) {
-        if (err) {
-          return next(err);
-        }
-        srcOptions.tags = tags;
-        srcOptions.components = components;
-        srcOptions.title = title;
-        next();
-      });
-    }
-  }, srcOptions));
+          destForm.title = form.title;
+          destForm.components = form.components;
+          destForm.tags = form.tags;
+          next();
+        }).catch(next);
+      }
+    },
+    // Copy the form.
+    function(next) {
+      if (!options.formio) {
+        return next('Cannot find the destination server.');
+      }
+      console.log('Saving components to destination ' + type + ' ' + dest);
+      var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
+      if (parts.length < 4) {
+        return next('Invalid destination: Must contain a ' + type + ' path');
+      }
 
-  // Copy components from old to new
-  steps.push(_.partial(function(src, dst, next) {
-    dst.tags = src.tags;
-    dst.components = src.components;
-    dst.title = src.title;
-
-    // This will force another authentication.
-    delete dst.formio;
-    next();
-  }, srcOptions, dstOptions));
-
-  // Reauthenticate if needed.
-  steps.push(_.partial(authenticate, dstOptions));
-
-  // Save to new form
-  steps.push(_.partial(function(dst, next) {
-    formio = require('./formio')(dst);
-    console.log('Saving components to destination ' + type + ' ' + dest);
-    var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
-    if (parts.length < 4) {
-      return next('Invalid destination: Must contain a ' + type + ' path');
-    }
-
-    // Load the form (if it exists)
-    var project = parts[1] + parts[2];
-    (new formio.Project(project)).form(parts[3])
-      .then(function(form) {
+      // Load the form (if it exists)
+      var project = parts[1] + parts[2];
+      (new options.formio.Project(project)).form(parts[3]).then(function(form) {
         if (form) {
           console.log('Updating existing form');
-          form.form.components = dst.components;
-          form.form.tags = dst.tags;
+          form.form.components = destForm.components;
+          form.form.tags = destForm.tags;
           form.save().then(function() {
-            console.log('Done!');
+            console.log('RESULT:' + JSON.stringify(form.form).green);
             next();
           }).catch(next);
         }
         else {
+          var newForm = {
+            title: 'Copy of ' + destForm.title,
+            name: _.camelCase(parts[3]),
+            path: parts[3],
+            type: type,
+            tags: destForm.tags,
+            components: destForm.components
+          };
           console.log('Creating new form');
-          console.log({
-            title: 'Copy of ' + dst.title,
-            name: _.camelCase(parts[3]),
-            path: parts[3],
-            type: type,
-            tags: dst.tags,
-            components: dst.components
-          });
-          (new formio.Project(project)).createForm({
-            title: 'Copy of ' + dst.title,
-            name: _.camelCase(parts[3]),
-            path: parts[3],
-            type: type,
-            tags: dst.tags,
-            components: dst.components
-          }).then(function() {
-            console.log('Done!');
+          (new options.formio.Project(project)).createForm(newForm).then(function(result) {
+            console.log('RESULT:' + JSON.stringify(result.form).green);
             next();
-          }).catch(function(err) {
-            console.log(err);
-            next(err);
-          });
+          }).catch(next);
         }
       })
-      .catch(function(err) {
-        console.log(err);
-        next(err);
-      });
-  }, dstOptions));
-
-  async.series(steps, next);
+      .catch(next);
+    }
+  ], function(err) {
+    if (err) {
+      console.log(err);
+      return done(err);
+    }
+    console.log('Done!');
+    done();
+  });
 };

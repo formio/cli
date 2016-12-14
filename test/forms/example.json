@@ -1,0 +1,110 @@
+{
+  "title": "Example",
+  "display": "form",
+  "type": "form",
+  "name": "example",
+  "path": "example",
+  "tags": ["testing", "form"],
+  "components": [
+    {
+      "tags": [],
+      "type": "textfield",
+      "conditional": {
+        "eq": "",
+        "when": null,
+        "show": ""
+      },
+      "validate": {
+        "customPrivate": false,
+        "custom": "",
+        "pattern": "",
+        "maxLength": "",
+        "minLength": "",
+        "required": false
+      },
+      "persistent": true,
+      "unique": false,
+      "protected": false,
+      "defaultValue": "",
+      "multiple": false,
+      "suffix": "",
+      "prefix": "",
+      "placeholder": "Enter your first name",
+      "key": "firstName",
+      "label": "First Name",
+      "inputMask": "",
+      "inputType": "text",
+      "tableView": true,
+      "input": true
+    },
+    {
+      "tags": [],
+      "type": "textfield",
+      "conditional": {
+        "eq": "",
+        "when": null,
+        "show": ""
+      },
+      "validate": {
+        "customPrivate": false,
+        "custom": "",
+        "pattern": "",
+        "maxLength": "",
+        "minLength": "",
+        "required": false
+      },
+      "persistent": true,
+      "unique": false,
+      "protected": false,
+      "defaultValue": "",
+      "multiple": false,
+      "suffix": "",
+      "prefix": "",
+      "placeholder": "Enter your last name",
+      "key": "lastName",
+      "label": "Last Name",
+      "inputMask": "",
+      "inputType": "text",
+      "tableView": true,
+      "input": true
+    },
+    {
+      "conditional": {
+        "eq": "",
+        "when": null,
+        "show": ""
+      },
+      "tags": [],
+      "type": "email",
+      "kickbox": {
+        "enabled": false
+      },
+      "persistent": true,
+      "unique": false,
+      "protected": false,
+      "defaultValue": "",
+      "suffix": "",
+      "prefix": "",
+      "placeholder": "Enter your email address.",
+      "key": "email",
+      "label": "Email",
+      "inputType": "email",
+      "tableView": true,
+      "input": true
+    },
+    {
+      "type": "button",
+      "theme": "primary",
+      "disableOnInvalid": false,
+      "action": "submit",
+      "block": false,
+      "rightIcon": "",
+      "leftIcon": "",
+      "size": "md",
+      "key": "submit",
+      "tableView": false,
+      "label": "Submit",
+      "input": true
+    }
+  ]
+}
