@@ -11,84 +11,29 @@ var importTemplate = require(__dirname + '/importTemplate');
 module.exports = function(options, next) {
   var steps = [];
 
-  var getServerOptions = function(options) {
-    if (options.project.indexOf('http') === 0) {
-      var urlObject = url.parse(options.project);
-      // Check if this is the format of http://project.server.com or http://project.localhost
-      var hostParts = urlObject.hostname.split('.');
-      var pathParts = urlObject.pathname.split('/');
-      // Always starts with an empty element. Throw it away.
-      if (pathParts.length > 0) {
-        pathParts.shift();
-      }
-      if (hostParts.length === 3 || (hostParts.length === 2 && hostParts[1] === 'localhost')) {
-        options.projectName = hostParts.shift();
-        urlObject.hostname = hostParts.join('.');
-        urlObject.host = urlObject.hostname + (urlObject.port ? ':' + urlObject.port : '');
-      }
-      // Check if this is the format of http://server.com/project/{projectId}
-      else if (pathParts.length > 1 && pathParts[0] === 'project') {
-        options.projectId = pathParts[1];
-      }
-      urlObject.path = urlObject.pathname = '';
-      options.server = url.format(urlObject);
-      options.host = urlObject.host;
-      // Slice gets rid of the ":" at the end.
-      options.protocol = urlObject.protocol.slice(0, -1);
-    }
-    else {
-      options.projectName = options.project;
-      options.project = 'https://' + options.project + '.form.io';
-    }
-
-    return options;
-  };
-
+  // Setup the source options.
   var srcOptions = _.clone(options);
   srcOptions.project = options.params[0];
-  // Project could be a local file or a formio project.
+  srcOptions.formio = options.srcFormio;
   if (srcOptions.project.indexOf('.json') !== -1) {
     steps.push(_.partial(loadTemplate, srcOptions));
   }
   else {
-    // Remove any trailing slash.
-    srcOptions.project.replace(/\/$/, '');
-    srcOptions = getServerOptions(srcOptions);
-    if (srcOptions.srcKey) {
-      srcOptions.key = srcOptions.srcKey;
-    }
-    else if (srcOptions.srcUsername && srcOptions.srcPassword) {
-      srcOptions.username = srcOptions.srcUsername;
-      srcOptions.password = srcOptions.srcPassword;
-    }
-
-    steps.push(_.partial(authenticate, srcOptions));
     steps.push(_.partial(exportTemplate, srcOptions));
   }
 
+  // Setup the destination options.
   var dstOptions = _.clone(options);
   dstOptions.project = options.params[1];
-  dstOptions = getServerOptions(dstOptions);
-  // If using the same destination server, allow using the same credentials.
-  if (srcOptions.server === dstOptions.server) {
-    dstOptions.key = dstOptions.srcKey;
-    dstOptions.username = dstOptions.srcUsername;
-    dstOptions.password = dstOptions.srcPassword;
-  }
-  if (dstOptions.dstKey) {
-    dstOptions.key = dstOptions.dstKey;
-  }
-  else if (dstOptions.dstUsername && dstOptions.dstPassword) {
-    dstOptions.username = dstOptions.dstUsername;
-    dstOptions.password = dstOptions.dstPassword;
-  }
+  dstOptions.formio = options.formio;
+
   // Copy the template from source to destination.
   steps.push(_.partial(function(src, dst, next) {
     dst.template = src.template;
     next();
   }, srcOptions, dstOptions));
-  // Authenticate again to the destination.
-  steps.push(_.partial(authenticate, dstOptions));
+
+  // Import the template into the destination.
   steps.push(_.partial(importTemplate, dstOptions));
   async.series(steps, next);
 };

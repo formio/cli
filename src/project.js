@@ -26,6 +26,10 @@ module.exports = {
    * @param directory
    */
   create: function(options, next) {
+    if (!options.formio) {
+      return next('Cannot connect to the server');
+    }
+
     // Get the package json file.
     var info = {};
     try {
@@ -56,9 +60,6 @@ module.exports = {
       return next(err);
     }
 
-    // Get the form.io service.
-    var formio = require('./formio')(options);
-
     // Use a generated name.
     template.name = this.domain();
 
@@ -85,7 +86,7 @@ module.exports = {
         settings: template.settings
       };
 
-      var formioProject = new formio.Project();
+      var formioProject = new options.formio.Project();
       formioProject.create(project).then(function() {
         console.log('Project created');
         params.path = formioProject.project.name;

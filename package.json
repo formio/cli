@@ -4,7 +4,7 @@
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "env TEST_SUITE=1 mocha ./test -b -t 60000",
     "lint": "eslint *.js **/**.js src/**.js src/**/**.js"
   },
   "author": "",
@@ -27,16 +27,18 @@
     "lodash": "^4.16.3",
     "nunjucks": "^2.5.2",
     "progress": "^1.1.8",
-    "prompt": "^0.2.14",
+    "prompt": "^1.0.0",
     "promptly": "^0.2.1",
-    "request": "^2.75.0",
+    "request": "^2.79.0",
     "stream-transform": "^0.1.1",
     "universal-analytics": "^0.3.11",
     "unzip": "^0.1.11",
     "yargs": "^3.32.0"
   },
   "devDependencies": {
+    "chance": "^1.0.4",
     "eslint": "^3.0.1",
-    "eslint-config-formio": "^1.1.0"
+    "eslint-config-formio": "^1.1.0",
+    "mocha": "^3.2.0"
   }
 }

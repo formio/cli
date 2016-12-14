@@ -1,13 +1,18 @@
 'use strict';
 
 module.exports = function(options, next) {
-  var formio = require('./formio')(options);
-
+  if (!options.formio) {
+    return next('Cannot connect to server');
+  }
   console.log('Exporting Template');
-  var project = new formio.Project(options.project);
+  var project = new options.formio.Project(options.project);
   project.export().then(function() {
     options.template = project.template;
-    if (project.template.plan && project.template.plan === 'basic') {
+    if (
+      !process.env.TEST_SUITE &&
+      project.template.plan &&
+      (project.template.plan === 'basic')
+    ) {
       return next('Deploy is only available for projects on a paid plan.');
     }
     next();

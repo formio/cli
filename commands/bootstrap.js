@@ -16,7 +16,7 @@ module.exports = function(program, next) {
     .option('-s, --server [server]', 'The server to use for deployment.')
     .action(series([
       require('../src/analytics')('bootstrap'),
-      require('../src/authenticate'),
+      require('../src/authenticate')(),
       require('../src/bootstrap')
     ], next));
 };

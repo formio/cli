@@ -3,14 +3,16 @@
 var _ = require('lodash');
 
 module.exports = function(options, next) {
-  var formio = require('./formio')(options);
+  if (!options.formio) {
+    return next('Cannot connect to server');
+  }
   var template = options.template;
 
   // If project exists, this is an update.
   console.log('Importing Template');
   var formioProject = null;
 
-  formioProject = new formio.Project(options.project);
+  formioProject = new options.formio.Project(options.project);
   formioProject.load(options.project)
     .then(function() {
       console.log('Updating Project');
@@ -31,7 +33,7 @@ module.exports = function(options, next) {
       }
 
       console.log('Creating Project');
-      formioProject = new formio.Project();
+      formioProject = new options.formio.Project();
       template.settings = template.settings || {};
       if (!template.settings.cors) {
         template.settings.cors = '*';

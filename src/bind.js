@@ -1,6 +1,9 @@
 'use strict';
 
 module.exports = function(options) {
+  if (!options.formio) {
+    return next('Cannot connect to server.');
+  }
   var method = options.params[0];
   var middleware = options.params[2];
   var sync = !!middleware;
@@ -8,8 +11,7 @@ module.exports = function(options) {
     middleware = require(process.cwd() + '/' + middleware);
   }
 
-  var formio = require('../src/formio')(options);
-  var project = new formio.Project(options.projectUrl);
+  var project = new options.formio.Project(options.projectUrl);
   project.load().then(function() {
     project.bind(options.formPath, method, function(err, data, res) {
       if (err) {
