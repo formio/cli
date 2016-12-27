@@ -98,8 +98,6 @@ module.exports = {
     return url;
   },
   execute: function(cmd, inputs, done) {
-    console.log("\n\n");
-    console.log('Executing: ' + cmd);
     var result = null;
     var output = '';
     var callDone = _.once(done);
@@ -124,10 +122,18 @@ module.exports = {
           }
         }, 10);
       }
-      if (line.indexOf('RESULT:') === 0) {
-        result = JSON.parse(line.replace('RESULT:', ''));
+      if (typeof result === 'boolean') {
+        result = JSON.parse(line);
       }
-      console.log(line + input);
+      if (line.indexOf('RESULT:') === 0) {
+        line = line.replace('RESULT:', '');
+        if (line) {
+          result = JSON.parse(line);
+        }
+        else {
+          result = true;
+        }
+      }
     });
     process.on('close', function() {
       callDone(null, result, output);
