@@ -5,7 +5,6 @@ var request = require('request');
 module.exports = function(options, next) {
   var src = options.params[0];
   var eachSubmission = options.params[1];
-  console.log(options.params);
 
   if (!src) {
     return next('You must provide a source form to load submissions.');
