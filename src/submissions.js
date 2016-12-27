@@ -53,7 +53,7 @@ module.exports = function(options, next) {
     stream
       .pipe(JSONStream.parse('*'))
       .pipe(transform(function(record, next) {
-        eachSubmission(record, index++, next);
+        eachSubmission(record, index++, options, next);
       }));
   }
   else {
