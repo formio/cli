@@ -15,7 +15,7 @@ module.exports = function(options, done) {
     return done('You must provide a type.');
   }
 
-  if (!src.length) {
+  if (!src) {
     return done('You must provide a source form to copy.');
   }
 
@@ -25,21 +25,27 @@ module.exports = function(options, done) {
 
   var destForm = {
     components: [],
-    tags: [],
-    title: ''
+    tags: null,
+    title: null
   };
+  var sourceForms = src.split(',');
+
   async.series([
     // Load the form.
     function(next) {
       if (!options.srcFormio) {
         return next('Cannot find the source server.');
       }
-      if (type === 'form' || type === 'resource') {
-        console.log('Loading form ' + src);
+      if (['form', 'resource'].indexOf(type) === -1) {
+        return next('Invalid form type given: ' + type);
+      }
+
+      // For each source form, copy the components after uniquifying them.
+      var keys = {};
+      async.eachSeries(sourceForms, function(src, cb) {
         var formObj = new options.srcFormio.Form(src);
         formObj.load().then(function() {
           var form = formObj.toJson();
-          var keys = {};
 
           // Ensure each component has a unique key.
           formioUtils.eachComponent(form.components, function(component) {
@@ -56,12 +62,18 @@ module.exports = function(options, done) {
           });
 
           // Append the components.
-          destForm.title = form.title;
-          destForm.components = form.components;
-          destForm.tags = form.tags;
-          next();
-        }).catch(next);
-      }
+          destForm.title = destForm.title || form.title;
+          destForm.components = destForm.components.concat(form.components);
+          destForm.tags = destForm.tags || form.tags;
+          cb();
+        });
+      }, function(err) {
+        if (err) {
+          return next(err);
+        }
+
+        return next();
+      });
     },
     // Copy the form.
     function(next) {
