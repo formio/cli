@@ -5,6 +5,7 @@ var async = require('async');
 var formioUtils = require('formio-utils');
 var authenticate = require(__dirname + '/authenticate');
 var _ = require('lodash');
+var formio = require('formio-service')();
 
 module.exports = function(options, done) {
   var type = options.params[0];
@@ -40,32 +41,46 @@ module.exports = function(options, done) {
         return next('Invalid form type given: ' + type);
       }
 
-      // For each source form, copy the components after uniquifying them.
       var keys = {};
+      var copyComponents = function(form, cb) {
+        // Ensure each component has a unique key.
+        formioUtils.eachComponent(form.components, function(component) {
+          if (component.key) {
+            var i = 0;
+            var key = component.key;
+            while (keys.hasOwnProperty(key)) {
+              i++;
+              key = component.key + i;
+            }
+            component.key = key;
+            keys[key] = true;
+          }
+        }, true);
+
+        // Append the components.
+        destForm.title = destForm.title || form.title;
+        destForm.components = destForm.components.concat(form.components);
+        destForm.tags = destForm.tags || form.tags;
+        
+        return cb();
+      };
+
+      var loadFormAnonymously = function(src, cb) {
+        new formio.Form(src).load().then(function(result) {
+          return copyComponents(result.form, cb);
+        });
+      };
+
+      // For each source form, copy the components after uniquifying them.
       async.eachSeries(sourceForms, function(src, cb) {
         var formObj = new options.srcFormio.Form(src);
         formObj.load().then(function() {
           var form = formObj.toJson();
+          if (form === 'Unauthorized') {
+            return loadFormAnonymously(src, cb);
+          }
 
-          // Ensure each component has a unique key.
-          formioUtils.eachComponent(form.components, function(component) {
-            if (component.key) {
-              var i = 0;
-              var key = component.key;
-              while (keys.hasOwnProperty(key)) {
-                i++;
-                key = component.key + i;
-              }
-              component.key = key;
-              keys[key] = true;
-            }
-          });
-
-          // Append the components.
-          destForm.title = destForm.title || form.title;
-          destForm.components = destForm.components.concat(form.components);
-          destForm.tags = destForm.tags || form.tags;
-          cb();
+          copyComponents(form, cb);
         });
       }, function(err) {
         if (err) {
@@ -93,10 +108,12 @@ module.exports = function(options, done) {
           console.log('Updating existing form');
           form.form.components = destForm.components;
           form.form.tags = destForm.tags;
-          form.save().then(function() {
-            console.log('RESULT:' + JSON.stringify(form.form).green);
+          form.save()
+          .then(function(response) {
+            console.log('RESULT:' + JSON.stringify(response.body).green);
             next();
-          }).catch(next);
+          })
+          .catch(next);
         }
         else {
           var newForm = {
