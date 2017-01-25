@@ -28,7 +28,7 @@ module.exports = function(options, next) {
     })
     .catch(function(err) {
       // If the project doesn't exist, lets create it. Otherwise just throw the error.
-      if (!err.response.error || err.response.error.status !== 500) {
+      if (!err.response || err.response.statusCode !== 500) {
         return next(err);
       }
 
