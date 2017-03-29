@@ -14,7 +14,7 @@ npm install -g formio-cli
 Commands
 -------------
 
-###Bootstrap
+### Bootstrap
 
    ```
    formio bootstrap [GitHub Project]
@@ -36,7 +36,7 @@ Commands
 
    This will ***download***, ***extract***, ***create***, ***configure*** and ***serve*** your application in one command!
    
-###Migrate
+### Migrate
 
    ```
    formio migrate <source> <transformer> <destination>
@@ -82,7 +82,7 @@ Commands
    formio migrate import.csv transform.js https://myproject.form.io/myform --key [YOUR_API_KEY]
    ```  
 
-###Deploy
+### Deploy
     
    ```
    formio deploy [src] [dst]
@@ -105,7 +105,7 @@ Commands
    
    Each server will require authentication so you will be asked twice, once for the source and once for the destination. These can also be specified with --src-username, --src-password, --dst-username, --dst-password.
 
-###Serve
+### Serve
 
    ```
    formio serve [directory]
