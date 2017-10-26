@@ -61,7 +61,7 @@ module.exports = function(options, done) {
         destForm.title = destForm.title || form.title;
         destForm.components = destForm.components.concat(form.components);
         destForm.tags = destForm.tags || form.tags;
-        
+
         return cb();
       };
 
@@ -81,6 +81,13 @@ module.exports = function(options, done) {
           }
 
           copyComponents(form, cb);
+        }).catch(function(err) {
+          if (err.message === 'Unauthorized') {
+            loadFormAnonymously(src, cb);
+          }
+          else {
+            console.log('Loading form ' + src + ' returned error: ' + err.message.red);
+          }
         });
       }, function(err) {
         if (err) {
