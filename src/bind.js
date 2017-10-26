@@ -15,7 +15,7 @@ module.exports = function(options) {
   project.load().then(function() {
     project.bind(options.formPath, method, function(err, data, res) {
       if (err) {
-        console.log(err.red);
+        return console.log(err.red);
       }
       console.log(JSON.stringify(data.body).blue);
       if (middleware) {
