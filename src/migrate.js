@@ -97,7 +97,10 @@ module.exports = function(options, next) {
           process.stdout.write('.');
         }
         next();
-      }).catch(next);
+      }).catch(function(err) {
+        console.log(JSON.stringify(err.response.body));
+        return next(err);
+      });
     });
   }));
 
