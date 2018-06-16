@@ -1,9 +1,7 @@
 'use strict';
 
-var url = require('url');
 var async = require('async');
-var formioUtils = require('formio-utils');
-var authenticate = require(__dirname + '/authenticate');
+var FormioUtils = require('formiojs/utils');
 var _ = require('lodash');
 var formio = require('formio-service')();
 
@@ -44,7 +42,7 @@ module.exports = function(options, done) {
       var keys = {};
       var copyComponents = function(form, cb) {
         // Ensure each component has a unique key.
-        formioUtils.eachComponent(form.components, function(component) {
+        FormioUtils.eachComponent(form.components, function(component) {
           if (component.key) {
             var i = 0;
             var key = component.key;

@@ -32,6 +32,7 @@ module.exports = function(options, next) {
   // Create the submission request.
   var stream = request({
     method: 'GET',
+    rejectUnauthorized: false,
     url: src + '/submission',
     qs: { limit: '10000000' },
     headers: requestHeaders

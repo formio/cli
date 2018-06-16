@@ -1,6 +1,5 @@
 'use strict';
 var fs = require('fs');
-var Formio = require('formio-service');
 var parse = require('csv-parse');
 var JSONStream = require('JSONStream');
 var transform = require('stream-transform');
@@ -67,6 +66,7 @@ module.exports = function(options, next) {
     }
     stream = request({
       method: 'GET',
+      rejectUnauthorized: false,
       url: src + '/submission',
       qs: { limit: '10000000' },
       headers: requestHeaders
