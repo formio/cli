@@ -10,7 +10,7 @@ module.exports = function(program, next) {
     .option('-p, --port [port]', 'The port you wish to serve the application.')
     .action(series([
       function(options, next) {
-        options.directory = options.param;
+        options.directory = options.params[0];
 
         if (!fs.existsSync(options.directory)) {
           return next('Directory not found');
