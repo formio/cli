@@ -43,7 +43,8 @@ module.exports = function(options, done) {
     pdfParser.on("pdfParser_dataReady", pdfData => {
       // TODO get all keys that exists in a form to check it when updating
 
-      // form.components = [];
+      // FIXME to be removed, it existed for testing
+      // form.components = [
       //   {
       //     label: 'FIRST_NAME',
       //     key: 'FIRST_NAME',
@@ -58,8 +59,6 @@ module.exports = function(options, done) {
       //     type: 'textfield'
       //   }
       // ];
-      // done();
-      // return;
 
       const components = [];
 
@@ -71,10 +70,11 @@ module.exports = function(options, done) {
 
           // conversion base to pixel
           const base = 28.5; // 1 pdf unit = 28.5 pixels
-          const shiftDimensionsBy = 0.9;
+          const shiftDimensionsBy = 0.9; // change of shift
           
           // move from index 0
           const pageNumber = key + 1;
+          // FIXME classify each input type method
           // run the text inputs
           page.Fields.forEach((field, index) => {
 
@@ -126,7 +126,7 @@ module.exports = function(options, done) {
 
             // conversion base to pixel
             const base = 28.5; // 1 pdf unit = 28.5 pixels
-            const shiftDimensionsBy = 0.5;
+            const shiftDimensionsBy = 0.5; // change of shift
             
             set.boxes.forEach( (field) => {
 
@@ -183,28 +183,19 @@ module.exports = function(options, done) {
         return done(err.message);
       }
 
-      // final setup
       // if(action === 'create'){
       //   form.components = components; // .concat(form.components);
       // }
-      console.log('pre-processed');
-      // if(action == 'update'){
+
+      if(action == 'update'){
+        // force replacing schema
         form.form.components = schema; // .concat(form.form.components);
-      // }
-      console.log('processed');
-
-      // console.log(form);
-
-
-      // console.log(formInstance);
-      // console.log(schema);
+      }
       form.save().then((err, save) => {
-        console.log('saved');
         if (err) {
           return done(err.message);
         }
         done();
-        // done(null, 'Successfully updated');
       }, err => console.log).catch( err => console.log );
     });
   });
