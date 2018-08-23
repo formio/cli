@@ -34,7 +34,7 @@
     "universal-analytics": "^0.4.15"
   },
   "devDependencies": {
-    "chance": "^1.0.12",
+    "chance": "^1.0.16",
     "eslint": "^4.9.0",
     "eslint-config-formio": "^1.1.4",
     "mocha": "^5.2.0"
