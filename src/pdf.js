@@ -1,8 +1,9 @@
 'use strict';
-
-const fs = require('fs');
 const PDFParser = require('pdf2json');
 const Formio = require('formio-service');
+const Chance = require('chance');
+const chance = new Chance();
+const _ = require('lodash');
 
 module.exports = function(options, done) {
   var action = options.params[0];
@@ -25,41 +26,13 @@ module.exports = function(options, done) {
     return done('You must provide a destination.');
   }
 
-  let pdf = null;
-  let pdfParser = null;
-  try {
-    pdf = fs.readFileSync(pdfFile);
-    pdfParser = new PDFParser();
-  }
-  catch (err) {
-    return done(err.message);
-  }
-
-  const getPDFSchema = function(form, done) {
-    // load the pdfFile
+  const getPDFSchema = function(done) {
+    const pdfParser = new PDFParser();
     pdfParser.loadPDF(pdfFile);
-    pdfParser.on("pdfParser_dataError", errData => console.error(errData.parserError));
+    pdfParser.on("pdfParser_dataError", errData => done(errData.parserError));
     // wait to read the stream
     pdfParser.on("pdfParser_dataReady", pdfData => {
       // TODO get all keys that exists in a form to check it when updating
-
-      // FIXME to be removed, it existed for testing
-      // form.components = [
-      //   {
-      //     label: 'FIRST_NAME',
-      //     key: 'FIRST_NAME',
-      //     input: true,
-      //     overlay: {
-      //       page: 1,
-      //       top: (13.416 * base) + (1.292 * base), // top: 218,   // 13.416,
-      //       left: 4.227 * base, // left: 154,  // 4.227,
-      //       width: 4.541 * base, // width: 165, // 4.541,
-      //       height: 1.292 * base // height: 27, // 1.292
-      //     },
-      //     type: 'textfield'
-      //   }
-      // ];
-
       const components = [];
 
       try{
@@ -163,11 +136,9 @@ module.exports = function(options, done) {
               components.push(component);
             });
           });
-          // push final components
-          form.components = components.concat(form.components);
         });
         // done
-        done(null, form.components);
+        done(null, components);
       }catch(e){
         console.log(e);
       }
@@ -175,28 +146,41 @@ module.exports = function(options, done) {
     });
   };
 
+  /**
+   * Either get a new form object, or an existing form to update.
+   *
+   * @param cb
+   * @return {*}
+   */
+  const getForm = function(cb) {
+    let form = null;
+    if (action === 'create') {
+      form = (new options.formio.Form(`${dest}/form`));
+      const num = chance.integer({min: 0, max: 99999});
+      form.form = {
+        title: `PDF${num}`,
+        name: `pdf${num}`,
+        path: `pdf${num}`,
+        components: []
+      };
+      return cb(form);
+    }
+    else if (action === 'update') {
+      form = (new options.formio.Form(dest));
+      form.load().then(() => cb(form));
+    }
+  };
+
   // Load the form JSON.
-  const form = (new options.formio.Form(dest));
-  form.load().then(function (form) {
-    getPDFSchema(form.form, (err, schema) => {
+  getForm((form) => {
+    getPDFSchema((err, components) => {
       if (err) {
-        return done(err.message);
+        return done(err.message || err);
       }
 
-      // if(action === 'create'){
-      //   form.components = components; // .concat(form.components);
-      // }
-
-      if(action == 'update'){
-        // force replacing schema
-        form.form.components = schema; // .concat(form.form.components);
-      }
-      form.save().then((err, save) => {
-        if (err) {
-          return done(err.message);
-        }
-        done();
-      }, err => console.log).catch( err => console.log );
+      form.form.components = components;
+      const formOp = (action === 'create') ? form.create(form.form) : form.save();
+      formOp.then((err) => done()).catch(done);
     });
   });
 };
