@@ -195,11 +195,12 @@ module.exports = function(config) {
           return next();
         }
 
-        // Use the source formio if the servers are the same.
+        // Use the source formio if the servers are the same and the destination does not have creds.
         if (
           srcOptions &&
           srcOptions.server &&
-          (srcOptions.server === dstOptions.server)
+          (srcOptions.server === dstOptions.server) &&
+          (!dstOptions.key)
         ) {
           options.formio = options.srcFormio;
           return next();
