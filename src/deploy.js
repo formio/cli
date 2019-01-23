@@ -1,10 +1,8 @@
 'use strict';
 
-var url = require('url');
 var async = require('async');
 var _ = require('lodash');
 var loadTemplate = require(__dirname + '/loadTemplate');
-var authenticate = require(__dirname + '/authenticate');
 var exportTemplate = require(__dirname + '/exportTemplate');
 var importTemplate = require(__dirname + '/importTemplate');
 
