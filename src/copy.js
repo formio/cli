@@ -24,6 +24,7 @@ module.exports = function(options, done) {
 
   var destForm = {
     components: [],
+    properties: {},
     tags: null,
     title: null
   };
@@ -59,6 +60,7 @@ module.exports = function(options, done) {
         destForm.title = destForm.title || form.title;
         destForm.components = destForm.components.concat(form.components);
         destForm.tags = destForm.tags || form.tags;
+        destForm.properties = destForm.properties || form.properties;
 
         return cb();
       };
@@ -113,6 +115,7 @@ module.exports = function(options, done) {
           console.log('Updating existing form');
           form.form.components = destForm.components;
           form.form.tags = destForm.tags;
+          form.form.properties = destForm.properties;
           form.save()
           .then(function(response) {
             console.log('RESULT:' + JSON.stringify(response.body).green);
@@ -127,7 +130,8 @@ module.exports = function(options, done) {
             path: parts[3],
             type: type,
             tags: destForm.tags,
-            components: destForm.components
+            components: destForm.components,
+            properties: destForm.properties
           };
           console.log('Creating new form');
           (new options.formio.Project(project)).createForm(newForm).then(function(result) {
