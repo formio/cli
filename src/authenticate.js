@@ -202,7 +202,7 @@ module.exports = function(config) {
           (srcOptions.server === dstOptions.server) &&
           (!dstOptions.key)
         ) {
-          options.formio = options.srcFormio;
+          options.dstFormio = options.formio = options.srcFormio;
           return next();
         }
 
@@ -212,7 +212,7 @@ module.exports = function(config) {
           if (err) {
             return next(err);
           }
-          options.formio = formio;
+          options.dstFormio = options.formio = formio;
           next();
         });
       }
