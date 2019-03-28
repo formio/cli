@@ -192,7 +192,7 @@ module.exports = function(options, next) {
   };
 
   if (!isProject) {
-    return migrateForm(src, dest, transformer);
+    return migrateForm(src, dest, transformer, next);
   }
 
   // Fetch all forms from the source.
