@@ -127,7 +127,7 @@ In many cases, you may wish to migrate data from a local CSV file into a project
 
    This command will serve a directory (to localhost) that has already been boostrapped.
 
- - ###Copy
+### Copy
 
     ```
     formio copy form [src] [dest]
