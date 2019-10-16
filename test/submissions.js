@@ -1,7 +1,7 @@
 var assert = require('assert');
 var util = require('./util');
 var SERVER1 = 'lvh.me:3000';
-var SERVER2 = 'lacolhost.com:3000';
+var SERVER2 = 'localhost.com:3000';
 describe('Submission Command', function() {
   this.timeout(20000);
   var project = null;
