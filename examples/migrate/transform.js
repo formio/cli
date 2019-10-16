@@ -7,9 +7,9 @@ module.exports = function(record, next) {
   }
   next(null, {
     data: {
-      firstName: record[0].trim(),
-      lastName: record[1].trim(),
-      email: record[2].trim()
+      firstName: record[0],
+      lastName: record[1],
+      email: record[2]
     }
   });
 };

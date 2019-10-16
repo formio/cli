@@ -5,6 +5,7 @@ const parse = require('csv-parse');
 const JSONStream = require('JSONStream');
 const transform = require('stream-transform');
 const request = require('request');
+const _ = require('lodash');
 const formTransform = require('./transforms/form');
 
 module.exports = function(options, next) {
@@ -24,33 +25,24 @@ module.exports = function(options, next) {
     dest = (options.params.length === 2) ? options.params[1] : options.params[2];
   }
 
-  const srcHeaders = {
-    'content-type': 'application/json'
-  };
-  if (options.srcFormio && options.srcFormio.apiKey) {
-    srcHeaders['x-token'] = options.srcFormio.apiKey;
-  }
-  else if (
-    options.srcFormio &&
-    options.srcFormio.currentUser &&
-    options.srcFormio.currentUser.token
-  ) {
-    srcHeaders['x-jwt-token'] = options.srcFormio.currentUser.token;
+  const headers = {};
+  function setHeaders(type, formio) {
+    if (formio) {
+      headers[type] = {};
+      if (formio.apiKey) {
+        headers[type]['x-token'] = formio.apiKey;
+      }
+      else if (formio.currentUser && formio.currentUser.token) {
+        headers[type]['x-jwt-token'] = formio.currentUser.token;
+      }
+    }
+    if (headers[type]) {
+      headers[type]['content-type'] = 'application/json';
+    }
   }
 
-  const destHeaders = {
-    'content-type': 'application/json'
-  };
-  if (options.dstFormio && options.dstFormio.apiKey) {
-    destHeaders['x-token'] = options.dstFormio.apiKey;
-  }
-  else if (
-    options.dstFormio &&
-    options.dstFormio.currentUser &&
-    options.dstFormio.currentUser.token
-  ) {
-    destHeaders['x-jwt-token'] = options.dstFormio.currentUser.token;
-  }
+  setHeaders('src', options.srcFormio);
+  setHeaders('dst', options.dstFormio);
 
   /**
    * Migrate a single form.
@@ -101,7 +93,10 @@ module.exports = function(options, next) {
       // Determine the stream based on the source type.
       var stream = null;
       if (src.substr(-4) === '.csv') {
-        stream = fs.createReadStream(process.cwd() + '/' + _src).pipe(parse());
+        stream = fs.createReadStream(process.cwd() + '/' + _src).pipe(parse({
+          ltrim: true,
+          rtrim: true
+        }));
       }
       else if (options.srcFormio) {
         try {
@@ -110,7 +105,7 @@ module.exports = function(options, next) {
             rejectUnauthorized: false,
             url: _src + '/submission',
             qs: { limit: '10000000' },
-            headers: srcHeaders
+            headers: headers.src
           }).pipe(JSONStream.parse('*'));
         }
         catch (err) {
@@ -172,7 +167,7 @@ module.exports = function(options, next) {
           json: true,
           method: 'POST',
           url: `${dstProject}/form`,
-          headers: destHeaders,
+          headers: headers.dst,
           body: {
             title: srcForm.form.title,
             path: srcForm.form.path,
@@ -204,7 +199,7 @@ module.exports = function(options, next) {
       limit: '10000000',
       select: '_id,path,title'
     },
-    headers: srcHeaders
+    headers: headers.src
   }, (err, response) => {
     if (err) {
       return next(err.message || err);
