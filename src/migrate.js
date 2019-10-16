@@ -27,7 +27,7 @@ module.exports = function(options, next) {
   const srcHeaders = {
     'content-type': 'application/json'
   };
-  if (options.srcFormio.apiKey) {
+  if (options.srcFormio && options.srcFormio.apiKey) {
     srcHeaders['x-token'] = options.srcFormio.apiKey;
   }
   else if (
@@ -41,7 +41,7 @@ module.exports = function(options, next) {
   const destHeaders = {
     'content-type': 'application/json'
   };
-  if (options.dstFormio.apiKey) {
+  if (options.dstFormio && options.dstFormio.apiKey) {
     destHeaders['x-token'] = options.dstFormio.apiKey;
   }
   else if (
