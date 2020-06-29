@@ -24,7 +24,7 @@ module.exports = function(options, done) {
 
   var destForm = {
     components: [],
-    properties: {},
+    properties: null,
     tags: null,
     title: null
   };
