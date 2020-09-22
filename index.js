@@ -1,7 +1,7 @@
 'use strict';
 
 require('colors');
-var program = require('commander');
+const { program } = require('commander');
 var pkg = require(__dirname + '/package.json');
 
 // Register all the commands.
