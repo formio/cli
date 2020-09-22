@@ -99,6 +99,10 @@ module.exports = function(source, destination, options) {
       }
 
       upsertAll('projects', projectQuery, (project, nextProject) => {
+        // Do not include the formio project
+        if (project.name === 'formio') {
+          return nextProject();
+        }
         itemQuery.project = project._id;
         process.stdout.write("\n");
         process.stdout.write(`Project ${project._id}: `);
