@@ -2,17 +2,30 @@
 const mongodb = require('mongodb');
 const async = require('async');
 const _ = require('lodash');
+const fs = require('fs');
 const MongoClient = mongodb.MongoClient;
 
 module.exports = function(source, destination, options) {
-  MongoClient.connect(source, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }, (err, _src) => {
+  const mongoConfig = (type) => {
+    const config = {
+      useNewUrlParser: true
+    };
+    if (options[`${type}Ssl`] || options[`${type}Ca`]) {
+      config.sslValidate = true;
+    }
+    if (options[`${type}Ca`]) {
+      config.ca = fs.readFileSync(options[`${type}Ca`]).toString();
+    }
+    return config;
+  };
+
+  console.log(`Connecting to ${source}`);
+  MongoClient.connect(source, mongoConfig('src'), (err, _src) => {
     if (err) {
-      return console.log(`Could not connect to source database ${source}`);
+      return console.log(`Could not connect to source database ${source}: ${err.message}`);
     }
 
+    console.log(`Succesfully connected to ${source}`);
     const srcDb = _src.db(_src.s.options.dbName);
     const src = {
       db: srcDb,
@@ -25,13 +38,13 @@ module.exports = function(source, destination, options) {
       tags: srcDb.collection('tags')
     };
 
-    MongoClient.connect(destination, {
-      useUnifiedTopology: true
-    }, (err, _dest) => {
+    console.log(`Connecting to ${destination}`);
+    MongoClient.connect(destination, mongoConfig('dst'), (err, _dest) => {
       if (err) {
         return console.log(`Could not connect to destination database ${destination}`);
       }
 
+      console.log(`Succesfully connected to ${destination}`);
       const destDb = _dest.db(_dest.s.options.dbName);
       const dest = {
         db: destDb,
