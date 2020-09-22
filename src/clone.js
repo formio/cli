@@ -8,12 +8,11 @@ const MongoClient = mongodb.MongoClient;
 module.exports = function(source, destination, options) {
   const mongoConfig = (type) => {
     const config = {
-      useNewUrlParser: true
+      useNewUrlParser: true,
+      useUnifiedTopology: true
     };
-    if (options[`${type}Ssl`] || options[`${type}Ca`]) {
-      config.sslValidate = true;
-    }
     if (options[`${type}Ca`]) {
+      config.sslValidate = true;
       config.ca = fs.readFileSync(options[`${type}Ca`]).toString();
     }
     return config;
@@ -72,7 +71,7 @@ module.exports = function(source, destination, options) {
             });
           },
           (nextItem) => {
-            dest[collection].update({_id: current._id}, current, {upsert: true}, (err) => {
+            dest[collection].replaceOne({_id: current._id}, current, {upsert: true}, (err) => {
               if (err) {
                 console.error(`Error updating ${collection} ${current._id}`, err);
                 return nextItem();
