@@ -13,7 +13,7 @@ module.exports = function(source, destination, options) {
     };
     if (options[`${type}Ca`]) {
       const caFile = options[`${type}Ca`];
-      config.tlsCAFile = `${__dirname}/${caFile}`;
+      config.tlsCAFile = `${proces.cwd()}/${caFile}`;
       config.tlsAllowInvalidHostnames = true;
     }
     return config;
