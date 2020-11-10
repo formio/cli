@@ -12,8 +12,9 @@ module.exports = function(source, destination, options) {
       useUnifiedTopology: true
     };
     if (options[`${type}Ca`]) {
-      config.sslValidate = true;
-      config.ca = fs.readFileSync(options[`${type}Ca`]).toString();
+      const caFile = options[`${type}Ca`];
+      config.tlsCAFile = `${__dirname}/${caFile}`;
+      config.tlsAllowInvalidHostnames = true;
     }
     return config;
   };
@@ -76,11 +77,19 @@ module.exports = function(source, destination, options) {
       const upsertAll = function(collection, query, beforeEach, afterEach, done) {
         const cursor = src[collection].find(query);
         eachDocument(cursor, (current, nextItem) => {
+          let cloned = current;
+          try {
+            cloned = JSON.parse(JSON.stringify(current));
+          }
+          catch (err) {
+            console.error(`Error copying ${collection} ${current._id}`, err);
+            return nextItem();
+          }
           if (beforeEach) {
-            beforeEach(current);
+            beforeEach(cloned);
           }
           delete current._id;
-          dest[collection].insertOne(current, (err, copy) => {
+          dest[collection].insertOne(cloned, (err, copy) => {
             if (err) {
               console.error(`Error creating ${collection} ${current._id}`, err);
               return nextItem();
