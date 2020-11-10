@@ -19,8 +19,9 @@ module.exports = function(source, destination, options) {
     return config;
   };
 
-  console.log(`Connecting to ${source}`);
-  MongoClient.connect(source, mongoConfig('src'), (err, _src) => {
+  const srcConfig = mongoConfig('src');
+  console.log(`Connecting to ${source} with config ${JSON.stringify(srcConfig, null, 2)}\n`);
+  MongoClient.connect(source, srcConfig, (err, _src) => {
     if (err) {
       return console.log(`Could not connect to source database ${source}: ${err.message}`);
     }
@@ -38,13 +39,15 @@ module.exports = function(source, destination, options) {
       tags: srcDb.collection('tags')
     };
 
-    console.log(`Connecting to ${destination}`);
-    MongoClient.connect(destination, mongoConfig('dst'), (err, _dest) => {
+    const dstConfig = mongoConfig('dst');
+    console.log(`\nConnecting to ${destination} with config ${JSON.stringify(dstConfig, null, 2)}\n`);
+    MongoClient.connect(destination, dstConfig, (err, _dest) => {
       if (err) {
         return console.log(`Could not connect to destination database ${destination}`);
       }
 
       console.log(`Succesfully connected to ${destination}`);
+      console.log('');
       const destDb = _dest.db(_dest.s.options.dbName);
       const dest = {
         db: destDb,
