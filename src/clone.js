@@ -87,8 +87,7 @@ module.exports = function(source, destination, options) {
 
       // Upsert all documents within the collection provided a query.
       const upsertAll = function(collection, query, beforeEach, afterEach, done) {
-        const cursor = src[collection].find(query);
-        eachDocument(cursor, (current, nextItem) => {
+        eachDocument(src[collection].find(query), (current, nextItem) => {
           let cloned = _.cloneDeep(current);
           if (beforeEach) {
             beforeEach(cloned);
@@ -127,6 +126,45 @@ module.exports = function(source, destination, options) {
         }, done);
       };
 
+      const getQuery = function(query) {
+        let newQuery = _.cloneDeep(query);
+        if (!options.all) {
+          newQuery.deleted = {$eq: null};
+        }
+        return newQuery;
+      };
+
+      const srcProjectQuery = function(query) {
+        const sourceProject = options.project || options.srcProject;
+        if (sourceProject) {
+          if (sourceProject.indexOf(',') === -1) {
+            query._id = mongodb.ObjectID(sourceProject);
+          }
+          else {
+            query._id = {$in: sourceProject.split(',').map((id) => mongodb.ObjectID(id))};
+          }
+        }
+        return query;
+      };
+
+      // Alter query to add deletedAfter and createdAfter filters.
+      const getItemQuery = function(query) {
+        let newQuery = _.cloneDeep(query);
+        if (options.deletedAfter) {
+          newQuery['$or'] = [
+            {deleted: {$eq: null}},
+            {deleted: {$gt: parseInt(options.deletedAfter, 10)}}
+          ];
+        }
+        else {
+          newQuery = getQuery(newQuery);
+        }
+        if (options.createdAfter) {
+          newQuery.created = {$gt: parseInt(options.createdAfter, 10)};
+        }
+        return newQuery;
+      };
+
       if (options.submissionsOnly) {
         console.log(`Cloning all submissions from project ${options.srcProject} to ${options.dstProject}.`);
         if (!options.dstProject) {
@@ -137,11 +175,10 @@ module.exports = function(source, destination, options) {
           return console.log(`You must provide a source project. --src-project=<project_id>`);
         }
 
-        const dstFormCursor = dest.forms.find({
-          project: mongodb.ObjectID(options.dstProject),
-          deleted: {$eq: null}
-        });
-        eachDocument(dstFormCursor, (dstForm, nextForm) => {
+        // Iterate through all forms.
+        eachDocument(dest.forms.find(getQuery({
+          project: mongodb.ObjectID(options.dstProject)
+        })), (dstForm, nextForm) => {
           src.forms.findOne({
             project: mongodb.ObjectID(options.srcProject),
             name: dstForm.name
@@ -157,19 +194,18 @@ module.exports = function(source, destination, options) {
             let deletePromise = Promise.resolve();
             if (options.deleteSubmissions) {
               console.log(`Deleting submissions from ${dstForm.title}`);
-              deletePromise = dest.submissions.deleteMany({
+              deletePromise = dest.submissions.deleteMany(getItemQuery({
                 project: dstForm.project,
                 form: dstForm._id
-              });
+              }));
             }
 
             deletePromise.then(() => {
               process.stdout.write(`Cloning submissions from form ${srcForm.title}: `);
-              upsertAll('submissions', {
+              upsertAll('submissions', getItemQuery({
                 form: srcForm._id,
-                project: srcForm.project,
-                deleted: {$eq: null}
-              }, (submission) => {
+                project: srcForm.project
+              }), (submission) => {
                 submission.form = dstForm._id;
                 submission.project = dstForm.project;
               }, null,() => nextForm());
@@ -181,29 +217,7 @@ module.exports = function(source, destination, options) {
         });
       }
       else {
-        let itemQuery = {};
-        let projectQuery = {};
-        if (options.deletedAfter) {
-          projectQuery['$or'] = [
-            {deleted: {$eq: null}},
-            {deleted: {$gt: parseInt(options.deletedAfter, 10)}}
-          ];
-        }
-        else if (!options.all) {
-          projectQuery.deleted = {$eq: null};
-        }
-
-        itemQuery = {...projectQuery};
-        const sourceProject = options.project || options.srcProject;
-        if (sourceProject) {
-          if (sourceProject.indexOf(',') === -1) {
-            projectQuery = {_id: mongodb.ObjectID(sourceProject)};
-          }
-          else {
-            projectQuery = {_id: {$in: sourceProject.split(',').map((id) => mongodb.ObjectID(id))}}
-          }
-        }
-
+        const itemQuery = getQuery({});
         process.stdout.write("\n");
         process.stdout.write(`Fetching formio project owner.`);
         dest.projects.findOne({name: 'formio'}, (err, formioProject) => {
@@ -211,7 +225,7 @@ module.exports = function(source, destination, options) {
             return console.log(`Error loading formio project: ${err.message}`);
           }
           const formioOwner = formioProject ? formioProject.owner : null;
-          upsertAll('projects', projectQuery, (project) => {
+          upsertAll('projects', srcProjectQuery({...itemQuery}), (project) => {
             if (formioOwner) {
               project.owner = formioOwner;
             }
@@ -231,14 +245,14 @@ module.exports = function(source, destination, options) {
               process.stdout.write(` - Cloning form ${form.title} (${form._id}): `);
               process.stdout.write("\n");
               process.stdout.write(`   - Submissions: : `);
-              upsertAll('submissions', itemQuery, (sub) => {
+              upsertAll('submissions', getItemQuery(itemQuery), (sub) => {
                 sub.form = clonedForm._id;
                 sub.project = clonedProject._id;
               }, null, () => {
                 process.stdout.write("\n");
                 process.stdout.write(`   - Actions: : `);
                 delete itemQuery.project;
-                upsertAll('actions', itemQuery, (action) => {
+                upsertAll('actions', getItemQuery(itemQuery), (action) => {
                   action.form = clonedForm._id;
                 }, null, () => nextForm());
               });
@@ -248,16 +262,14 @@ module.exports = function(source, destination, options) {
               upsertAll('roles', itemQuery, (role) => {
                 process.stdout.write("\n");
                 process.stdout.write(` - Cloning role ${role.title} (${role._id}): `);
-                process.stdout.write("\n");
                 role.project = clonedProject._id;
               }, null, () => {
-                upsertAll('tags', itemQuery, (tag) => {
+                upsertAll('tags', getItemQuery(itemQuery), (tag) => {
                   process.stdout.write("\n");
                   process.stdout.write(` - Cloning tag ${tag.tag} (${tag._id}): `);
-                  process.stdout.write("\n");
                   tag.project = clonedProject._id;
                 }, null, () => {
-                  upsertAll('formrevisions', itemQuery, (revision) => {
+                  upsertAll('formrevisions', getItemQuery(itemQuery), (revision) => {
                     process.stdout.write("\n");
                     process.stdout.write(` - Cloning revision ${revision.name} v${revision._vid} (${revision._id}): `);
                     process.stdout.write("\n");
