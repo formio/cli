@@ -196,8 +196,12 @@ module.exports = function(source, destination, options) {
         itemQuery = {...projectQuery};
         const sourceProject = options.project || options.srcProject;
         if (sourceProject) {
-          projectQuery = {_id: mongodb.ObjectID(sourceProject)};
-          itemQuery.project = projectQuery._id;
+          if (sourceProject.indexOf(',') === -1) {
+            projectQuery = {_id: mongodb.ObjectID(sourceProject)};
+          }
+          else {
+            projectQuery = {_id: {$in: sourceProject.split(',').map((id) => mongodb.ObjectID(id))}}
+          }
         }
 
         process.stdout.write("\n");
@@ -222,7 +226,6 @@ module.exports = function(source, destination, options) {
             upsertAll('forms', itemQuery, (form) => {
               form.project = clonedProject._id;
             }, (form, clonedForm, nextForm) => {
-              itemQuery.project = project._id;
               itemQuery.form = form._id;
               process.stdout.write("\n");
               process.stdout.write(` - Cloning form ${form.title} (${form._id}): `);
