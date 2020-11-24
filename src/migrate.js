@@ -117,7 +117,7 @@ module.exports = function(options, next) {
         _transformer(record, function(err, transformed) {
           if (err) {
             console.log(err);
-            return nextItem(err);
+            return nextItem();
           }
 
           if (!transformed) {
@@ -130,7 +130,6 @@ module.exports = function(options, next) {
               console.log('');
               console.log(response.body);
               console.log(transformed);
-              return nextItem(response.body)
             }
             else {
               process.stdout.write('.');
@@ -138,7 +137,7 @@ module.exports = function(options, next) {
             nextItem();
           }).catch(function(err) {
             console.log(JSON.stringify(err.response.body));
-            return nextItem(err);
+            return nextItem();
           });
         });
       }, {
@@ -148,7 +147,7 @@ module.exports = function(options, next) {
       streamTransform.on('error', (err) => {
         console.log(err.message);
         return done(err);
-      })
+      });
       streamTransform.on('finish', () => {
         return done();
       });
