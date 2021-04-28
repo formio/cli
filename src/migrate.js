@@ -210,6 +210,9 @@ module.exports = function(options, next) {
 
     // Iterate through each of the forms.
     async.eachSeries(response.body, (form, nextForm) => {
+      if (!form || !form.path) {
+        return nextForm();
+      }
       migrateForm(
         `${src}/${form.path}`,
         `${dest}/${form.path}`,

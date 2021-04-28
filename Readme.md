@@ -108,13 +108,6 @@ In many cases, you may wish to migrate data from a local CSV file into a project
 
    Each server will require authentication so you will be asked twice, once for the source and once for the destination. These can also be specified with --src-username, --src-password, --dst-username, --dst-password.
 
-### Serve
-
-   ```
-   formio serve [directory]
-   ```
-
-   This command will serve a directory (to localhost) that has already been boostrapped.
 
 ### Copy
 
