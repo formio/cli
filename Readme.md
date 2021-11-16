@@ -78,6 +78,18 @@ In many cases, you may wish to migrate data from a local CSV file into a project
 
    Clones a project from one database into another, and includes all forms, submissions, and every other resources within the project. This command
    also retains any _id's from the source database.
+   
+### Clone Multiple Projects
+
+   It is also possible to clone multiple projects at the same time by providing a comma separated list of the project ids, like this.
+   
+    formio clone <source_db> <destination_db> --src-project=234234234234,345345345345345,45456456456456
+
+### Clone only records created after a certain date
+
+   You can also clone only the records that have been created after a certain ISO Timestamp. This is useful if you wish to perform multiple migrations and only wish to clone records since the last clone command was called.
+   
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --created-after=2342342342
 
 ### Clone Submissions
 
