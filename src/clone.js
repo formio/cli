@@ -5,7 +5,7 @@ const _ = require('lodash');
 const fs = require('fs');
 const MongoClient = mongodb.MongoClient;
 
-module.exports = function(source, destination, options) {
+module.exports = function (source, destination, options) {
   // If the source and destination are the same, then we need to create new records.
   const createNew = (source === destination);
   const mongoConfig = (type) => {
@@ -68,7 +68,7 @@ module.exports = function(source, destination, options) {
       };
 
       // Iterate through each document within a cursor.
-      const eachDocument = function(cursor, each, done) {
+      const eachDocument = function (cursor, each, done) {
         let current = null;
         async.whilst(
           (test) => {
@@ -86,7 +86,7 @@ module.exports = function(source, destination, options) {
       };
 
       // Upsert all documents within the collection provided a query.
-      const upsertAll = function(collection, query, beforeEach, afterEach, done) {
+      const upsertAll = function (collection, query, beforeEach, afterEach, done) {
         eachDocument(src[collection].find(query), (current, nextItem) => {
           let cloned = _.cloneDeep(current);
           if (beforeEach) {
@@ -112,55 +112,55 @@ module.exports = function(source, destination, options) {
               if (err) {
                 return onCreated(err);
               }
-              dest[collection].findOne({_id: inserted.insertedId}, onCreated);
+              dest[collection].findOne({ _id: inserted.insertedId }, onCreated);
             });
           }
           else {
-            dest[collection].replaceOne({_id: current._id}, cloned, {upsert: true}, (err) => {
+            dest[collection].replaceOne({ _id: current._id }, cloned, { upsert: true }, (err) => {
               if (err) {
                 return onCreated(err);
               }
-              dest[collection].findOne({_id: current._id}, onCreated);
+              dest[collection].findOne({ _id: current._id }, onCreated);
             });
           }
         }, done);
       };
 
-      const getQuery = function(query) {
+      const getQuery = function (query) {
         let newQuery = _.cloneDeep(query);
         if (!options.all) {
-          newQuery.deleted = {$eq: null};
+          newQuery.deleted = { $eq: null };
         }
         return newQuery;
       };
 
-      const srcProjectQuery = function(query) {
+      const srcProjectQuery = function (query) {
         const sourceProject = options.project || options.srcProject;
         if (sourceProject) {
           if (sourceProject.indexOf(',') === -1) {
             query._id = mongodb.ObjectID(sourceProject);
           }
           else {
-            query._id = {$in: sourceProject.split(',').map((id) => mongodb.ObjectID(id))};
+            query._id = { $in: sourceProject.split(',').map((id) => mongodb.ObjectID(id)) };
           }
         }
         return query;
       };
 
       // Alter query to add deletedAfter and createdAfter filters.
-      const getItemQuery = function(query) {
+      const getItemQuery = function (query) {
         let newQuery = _.cloneDeep(query);
         if (options.deletedAfter) {
           newQuery['$or'] = [
-            {deleted: {$eq: null}},
-            {deleted: {$gt: parseInt(options.deletedAfter, 10)}}
+            { deleted: { $eq: null } },
+            { deleted: { $gt: parseInt(options.deletedAfter, 10) } }
           ];
         }
         else {
           newQuery = getQuery(newQuery);
         }
         if (options.createdAfter) {
-          newQuery.created = {$gt: parseInt(options.createdAfter, 10)};
+          newQuery.created = { $gt: parseInt(options.createdAfter, 10) };
         }
         return newQuery;
       };
@@ -208,7 +208,7 @@ module.exports = function(source, destination, options) {
               }), (submission) => {
                 submission.form = dstForm._id;
                 submission.project = dstForm.project;
-              }, null,() => nextForm());
+              }, null, () => nextForm());
             });
           });
         }, () => {
@@ -220,14 +220,24 @@ module.exports = function(source, destination, options) {
         const itemQuery = getQuery({});
         process.stdout.write("\n");
         process.stdout.write(`Fetching formio project owner.`);
-        dest.projects.findOne({name: 'formio'}, (err, formioProject) => {
+        dest.projects.findOne({ name: 'formio' }, (err, formioProject) => {
           if (err) {
             return console.log(`Error loading formio project: ${err.message}`);
           }
           const formioOwner = formioProject ? formioProject.owner : null;
-          upsertAll('projects', srcProjectQuery({...itemQuery}), (project) => {
+          upsertAll('projects', srcProjectQuery({ ...itemQuery }), (project) => {
             if (formioOwner) {
               project.owner = formioOwner;
+            }
+            // Remove "teams" in the access settings.
+            if (project.access) {
+              let newAccess = [];
+              project.access.forEach((access) => {
+                if (access.type.indexOf('team_') === -1) {
+                  newAccess.push(access);
+                }
+              });
+              project.access = newAccess;
             }
           }, (project, clonedProject, nextProject) => {
             // Do not include the formio project
