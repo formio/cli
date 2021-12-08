@@ -5,6 +5,7 @@ module.exports = function(program, next) {
     .description('Clone a database (project) from one place to another.')
     .option('--deleted-after [timestamp]', 'Only clone items deleted after the provided UNIX timestamp.')
     .option('--created-after [timestamp]', 'Only clone items created after the provided UNIX timestamp.')
+    .option('--modified-after [timestamp]', 'Only clone items modified after the provided UNIX timestamp.')
     .option('-a, --all', 'Include All items (including deleted items', false)
     .option('-o, --submissions-only', 'Only clone the submissions within a project', false)
     .option('-f, --delete-submissions', 'Delete all submissions on the receiving form before cloning', false)

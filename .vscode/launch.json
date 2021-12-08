@@ -11,7 +11,8 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "program": "${workspaceFolder}/index.js migrate https://humanresources.form.io project http://localhost:3000/dev-widxjkthibsgbln"
+            "args": [],
+            "program": "${workspaceFolder}/index.js"
         }
     ]
 }

@@ -89,9 +89,6 @@ module.exports = function (source, destination, options) {
       const upsertAll = function (collection, query, beforeEach, afterEach, done) {
         eachDocument(src[collection].find(query), (current, nextItem) => {
           let cloned = _.cloneDeep(current);
-          if (beforeEach) {
-            beforeEach(cloned);
-          }
           const onCreated = (err, copy) => {
             if (err) {
               console.error(`Error creating ${collection} ${current._id}`, err);
@@ -108,6 +105,9 @@ module.exports = function (source, destination, options) {
 
           if (createNew) {
             delete current._id;
+            if (beforeEach) {
+              beforeEach(cloned);
+            }
             dest[collection].insertOne(cloned, (err, inserted) => {
               if (err) {
                 return onCreated(err);
@@ -116,11 +116,19 @@ module.exports = function (source, destination, options) {
             });
           }
           else {
-            dest[collection].replaceOne({ _id: current._id }, cloned, { upsert: true }, (err) => {
+            dest[collection].findOne({_id: current._id}, (err, destItem) => {
               if (err) {
                 return onCreated(err);
               }
-              dest[collection].findOne({ _id: current._id }, onCreated);
+              if (beforeEach) {
+                beforeEach(cloned, destItem);
+              }
+              dest[collection].replaceOne({ _id: current._id }, cloned, { upsert: true }, (err) => {
+                if (err) {
+                  return onCreated(err);
+                }
+                dest[collection].findOne({ _id: current._id }, onCreated);
+              });
             });
           }
         }, done);
@@ -160,7 +168,10 @@ module.exports = function (source, destination, options) {
           newQuery = getQuery(newQuery);
         }
         if (options.createdAfter) {
-          newQuery.created = { $gt: parseInt(options.createdAfter, 10) };
+          newQuery.created = { $gt: new Date(parseInt(options.createdAfter, 10)) };
+        }
+        if (options.modifiedAfter) {
+          newQuery.modified = { $gt: new Date(parseInt(options.modifiedAfter, 10)) };
         }
         return newQuery;
       };
@@ -225,11 +236,11 @@ module.exports = function (source, destination, options) {
             return console.log(`Error loading formio project: ${err.message}`);
           }
           const formioOwner = formioProject ? formioProject.owner : null;
-          upsertAll('projects', srcProjectQuery({ ...itemQuery }), (project) => {
+          upsertAll('projects', srcProjectQuery({ ...itemQuery }), (project, dstProject) => {
             if (formioOwner) {
               project.owner = formioOwner;
             }
-            // Remove "teams" in the access settings.
+            // Keep the team access.
             if (project.access) {
               let newAccess = [];
               project.access.forEach((access) => {
@@ -237,6 +248,13 @@ module.exports = function (source, destination, options) {
                   newAccess.push(access);
                 }
               });
+              if (dstProject) {
+                dstProject.access.forEach((access) => {
+                  if (access.type.indexOf('team_') === 0) {
+                    newAccess.push(access);
+                  }
+                });
+              }
               project.access = newAccess;
             }
           }, (project, clonedProject, nextProject) => {
