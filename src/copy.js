@@ -1,9 +1,8 @@
 'use strict';
 
 var async = require('async');
-var FormioUtils = require('formiojs/utils').default;
 var _ = require('lodash');
-var formio = require('formio-service')();
+var fetch = require('node-fetch');
 
 module.exports = function(options, done) {
   var type = options.params[0];
@@ -40,55 +39,33 @@ module.exports = function(options, done) {
         return next('Invalid form type given: ' + type);
       }
 
-      var keys = {};
       var copyComponents = function(form, cb) {
-        // Ensure each component has a unique key.
-        FormioUtils.eachComponent(form.components, function(component) {
-          if (component.key) {
-            var i = 0;
-            var key = component.key;
-            while (keys.hasOwnProperty(key)) {
-              i++;
-              key = component.key + i;
-            }
-            component.key = key;
-            keys[key] = true;
-          }
-        }, true);
-
-        // Append the components.
         destForm.title = destForm.title || form.title;
-        destForm.components = destForm.components.concat(form.components);
+        destForm.components = form.components;
         destForm.tags = destForm.tags || form.tags;
         destForm.properties = destForm.properties || form.properties;
-
         return cb();
-      };
-
-      var loadFormAnonymously = function(src, cb) {
-        new formio.Form(src).load().then(function(result) {
-          return copyComponents(result.form, cb);
-        });
       };
 
       // For each source form, copy the components after uniquifying them.
       async.eachSeries(sourceForms, function(src, cb) {
-        var formObj = new options.srcFormio.Form(src);
-        formObj.load().then(function() {
-          var form = formObj.toJson();
-          if (form === 'Unauthorized') {
-            return loadFormAnonymously(src, cb);
-          }
-
-          copyComponents(form, cb);
-        }).catch(function(err) {
-          if (err.message === 'Unauthorized') {
-            loadFormAnonymously(src, cb);
-          }
-          else {
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        if (options.srcKey) {
+          headers['x-token'] = options.srcKey;
+        }
+        fetch(src, {
+          headers
+        })
+          .then(resp => resp.json())
+          .then((form) => {
+            copyComponents(form, cb);
+          })
+          .catch(err => {
             console.log('Loading form ' + src + ' returned error: ' + err.message.red);
-          }
-        });
+            cb(err);
+          });
       }, function(err) {
         if (err) {
           return next(err);
@@ -99,48 +76,88 @@ module.exports = function(options, done) {
     },
     // Copy the form.
     function(next) {
-      if (!options.formio) {
-        return next('Cannot find the destination server.');
-      }
       console.log('Saving components to destination ' + type + ' ' + dest);
       var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
       if (parts.length < 4) {
         return next('Invalid destination: Must contain a ' + type + ' path');
       }
 
-      // Load the form (if it exists)
-      var project = parts[1] + parts[2];
-      (new options.formio.Project(project)).form(parts[3]).then(function(form) {
-        if (form) {
-          console.log('Updating existing form');
-          form.form.components = destForm.components;
-          form.form.tags = destForm.tags;
-          form.form.properties = destForm.properties;
-          form.save()
-          .then(function(response) {
-            console.log('RESULT:' + JSON.stringify(response.body).green);
-            next();
-          })
-          .catch(next);
-        }
-        else {
-          var newForm = {
-            title: 'Copy of ' + destForm.title,
-            name: _.camelCase(parts[3]),
-            path: parts[3],
-            type: type,
-            tags: destForm.tags,
-            components: destForm.components,
-            properties: destForm.properties
-          };
-          console.log('Creating new form');
-          (new options.formio.Project(project)).createForm(newForm).then(function(result) {
-            console.log('RESULT:' + JSON.stringify(result.form).green);
-            next();
-          }).catch(next);
-        }
+      // Load the destination form.
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      if (options.dstKey) {
+        headers['x-token'] = options.dstKey;
+      }
+      fetch(dest, {
+        headers
       })
-      .catch(next);
+        .then((resp) => {
+          if (resp.status === 200) {
+            return resp.json();
+          }
+          else {
+            return null;
+          }
+        })
+        .then((form) => {
+          if (form) {
+            console.log('Updating existing form');
+            form.components = destForm.components;
+            form.tags = destForm.tags;
+            form.properties = destForm.properties;
+            fetch(dest, {
+              method: 'PUT',
+              body: JSON.stringify(form),
+              headers,
+            })
+              .then(resp => resp.json())
+              .then((form) => {
+                console.log('RESULT:' + JSON.stringify(form).green);
+                next();
+              })
+              .catch(next);
+          }
+          else {
+            var name = '';
+            var projectUrl = parts[1] + parts[2];
+            if (parts[2].match(/form\.io$/)) {
+              name = parts[3];
+            }
+            else {
+              var formPath = parts[3].split('/');
+              var projectName = formPath.shift();
+              projectUrl += '/' + projectName;
+              name = formPath.join('/');
+            }
+            var newForm = {
+              title: 'Copy of ' + destForm.title,
+              name: _.camelCase(name.split('/').join(' ')),
+              path: name,
+              type: type,
+              tags: destForm.tags,
+              components: destForm.components,
+              properties: destForm.properties
+            };
+            console.log('Creating new form');
+            fetch(projectUrl + '/form', {
+              method: 'POST',
+              body: JSON.stringify(newForm),
+              headers
+            })
+              .then((resp) => {
+                return resp.json();
+              })
+              .then((form) => {
+                console.log('RESULT:' + JSON.stringify(form).green);
+                next();
+              })
+              .catch(next);
+          }
+        })
+        .catch((err) => {
+          console.log(err);
+        });
     }
   ], function(err) {
     if (err) {
