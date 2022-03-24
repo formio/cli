@@ -85,8 +85,15 @@ module.exports = function (source, destination, options) {
           done);
       };
 
+      const findExisting = function(current) {
+        return {_id: current._id}
+      };
+
       // Upsert all documents within the collection provided a query.
-      const upsertAll = function (collection, query, beforeEach, afterEach, done) {
+      const upsertAll = function (collection, query, beforeEach, afterEach, done, findQuery) {
+        if (!findQuery) {
+          findQuery = findExisting;
+        }
         eachDocument(src[collection].find(query), (current, nextItem) => {
           let cloned = _.cloneDeep(current);
           const onCreated = (err, copy) => {
@@ -116,18 +123,18 @@ module.exports = function (source, destination, options) {
             });
           }
           else {
-            dest[collection].findOne({_id: current._id}, (err, destItem) => {
+            dest[collection].findOne(findQuery(current), (err, destItem) => {
               if (err) {
                 return onCreated(err);
               }
               if (beforeEach) {
                 beforeEach(cloned, destItem);
               }
-              dest[collection].replaceOne({ _id: current._id }, cloned, { upsert: true }, (err) => {
+              dest[collection].replaceOne(findQuery(current), cloned, { upsert: true }, (err) => {
                 if (err) {
                   return onCreated(err);
                 }
-                dest[collection].findOne({ _id: current._id }, onCreated);
+                dest[collection].findOne(findQuery(current), onCreated);
               });
             });
           }
@@ -302,7 +309,12 @@ module.exports = function (source, destination, options) {
                     process.stdout.write(` - Cloning revision ${revision.name} v${revision._vid} (${revision._id}): `);
                     process.stdout.write("\n");
                     revision.project = clonedProject._id;
-                  }, null, () => nextProject());
+                  }, null, () => nextProject(), (current) => {
+                    return {
+                      _rid: current._rid,
+                      _vid: current._vid
+                    };
+                  });
                 });
               });
             });
