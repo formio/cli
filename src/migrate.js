@@ -336,9 +336,17 @@ module.exports = function(options, next) {
       return next('No forms were found within the source project.');
     }
 
+    let formFound = !options.startWith;
+
     // Iterate through each of the forms.
     async.eachSeries(response.body, (form, nextForm) => {
       if (!form || !form.path) {
+        return nextForm();
+      }
+      if (!formFound && options.startWith) {
+        formFound = (form.path === options.startWith);
+      }
+      if (!formFound) {
         return nextForm();
       }
       migrateForm(
