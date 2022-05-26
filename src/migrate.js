@@ -217,7 +217,7 @@ module.exports = function(options, next) {
         if (options.delete) {
           process.stdout.write(`Deleting all submissions from form ${_dest}`);
         }
-        if (options.deleteBefore && !options.deleteAfter) {
+        else if (options.deleteBefore && !options.deleteAfter) {
           process.stdout.write(`Deleting submissions from form ${_dest} before ${options.deleteBefore}`);
         }
         else if (!options.deleteBefore && options.deleteAfter) {
