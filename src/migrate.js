@@ -85,6 +85,46 @@ module.exports = function(options, next) {
       }
     }
 
+    const deletePrevious = function(record, cb) {
+      if (!options.deletePrevious) {
+        return cb();
+      }
+      // Load a previous submission if exists.
+      request({
+        json: true,
+        method: 'GET',
+        rejectUnauthorized: false,
+        url: _dest + '/submission',
+        qs: {limit: 1000000, 'metadata.from': record._id.toString()},
+        headers: headers.dst
+      }, (err, response) => {
+        if (err) {
+          console.log(err);
+          return cb();
+        }
+        if (response.statusCode !== 200) {
+          console.log(response.statusMessage);
+          return cb();
+        }
+        if (!response.body || !response.body.length || !response.body[0]._id) {
+          return cb();
+        }
+        request({
+          json: true,
+          method: 'DELETE',
+          rejectUnauthorized: false,
+          url: _dest + '/submission/' + response.body[0]._id,
+          headers: headers.dst
+        }, (err) => {
+          if (err) {
+            return cb();
+          }
+          process.stdout.write('x');
+          cb();
+        });
+      });
+    };
+
     // Create a form object.
     var destForm = new options.formio.Form(_dest);
     const migrateData = function() {
@@ -104,7 +144,7 @@ module.exports = function(options, next) {
             method: 'GET',
             rejectUnauthorized: false,
             url: _src + '/submission',
-            qs: { limit: '10000000' },
+            qs: { select: '_id', limit: '10000000' },
             headers: headers.src
           }).pipe(JSONStream.parse('*'));
         }
@@ -114,30 +154,44 @@ module.exports = function(options, next) {
       }
 
       const streamTransform = transform(function(record, nextItem) {
-        _transformer(record, function(err, transformed) {
+        request({
+          json: true,
+          method: 'GET',
+          rejectUnauthorized: false,
+          url: _src + '/submission/' + record._id,
+          headers: headers.src
+        }, (err, response) => {
           if (err) {
             console.log(err);
             return nextItem();
           }
-
-          if (!transformed) {
-            return nextItem();
-          }
-
-          // Submit to the destination form.
-          destForm.submit(transformed).then(function(response) {
-            if (parseInt(response.statusCode / 100, 10) != 2) {
-              console.log('');
-              console.log(response.body);
-              console.log(transformed);
-            }
-            else {
-              process.stdout.write('.');
-            }
-            nextItem();
-          }).catch(function(err) {
-            console.log(JSON.stringify(err.response.body));
-            return nextItem();
+          deletePrevious(record, () => {
+            _transformer(response.body, function(err, transformed) {
+              if (err) {
+                console.log(err);
+                return nextItem();
+              }
+    
+              if (!transformed) {
+                return nextItem();
+              }
+    
+              // Submit to the destination form.
+              destForm.submit(transformed).then(function(response) {
+                if (parseInt(response.statusCode / 100, 10) != 2) {
+                  console.log('');
+                  console.log(response.body);
+                  console.log(transformed);
+                }
+                else {
+                  process.stdout.write('.');
+                }
+                nextItem();
+              }).catch(function(err) {
+                console.log(JSON.stringify(err.response.body));
+                return nextItem();
+              });
+            });
           });
         });
       }, {
@@ -154,8 +208,82 @@ module.exports = function(options, next) {
       stream.pipe(streamTransform);
     };
 
+    const deleteData = function() {
+      if (!options.deleteBefore && !options.deleteAfter && !options.delete) {
+        return Promise.resolve();
+      }
+      return new Promise((resolve, reject) => {
+        console.log('');
+        if (options.delete) {
+          process.stdout.write(`Deleting all submissions from form ${_dest}`);
+        }
+        if (options.deleteBefore && !options.deleteAfter) {
+          process.stdout.write(`Deleting submissions from form ${_dest} before ${options.deleteBefore}`);
+        }
+        else if (!options.deleteBefore && options.deleteAfter) {
+          process.stdout.write(`Deleting submissions from form ${_dest} after ${options.deleteAfter}`);
+        }
+        else {
+          process.stdout.write(`Deleting submissions from form ${_dest} between ${options.deleteAfter} and ${options.deleteBefore}`);
+        }
+        const deleteQuery = {select: '_id', limit: '10000000'};
+        if (options.deleteBefore) {
+          deleteQuery.created__lt = options.deleteBefore;
+        }
+        if (options.deleteAfter) {
+          deleteQuery.created__gt = options.deleteAfter;
+        }
+        request({
+          json: true,
+          method: 'GET',
+          rejectUnauthorized: false,
+          url: _dest + '/submission',
+          qs: deleteQuery,
+          headers: headers.dst
+        }, (err, response) => {
+          if (err) {
+            console.log(err);
+            return reject(err);
+          }
+          if (response.statusCode !== 200) {
+            return reject(response.statusMessage);
+          }
+          if (!response) {
+            return resolve();
+          }
+          let records = response.body;
+          let deleteIndex = 0;
+          function deleteNext() {
+            if (deleteIndex < records.length) {
+              request({
+                json: true,
+                method: 'DELETE',
+                rejectUnauthorized: false,
+                url: _dest + '/submission/' + records[deleteIndex]._id,
+                headers: headers.dst
+              }, () => {
+                process.stdout.write('.');
+                deleteIndex++;
+                deleteNext();
+              });
+            }
+            else {
+              return resolve();
+            }
+          }
+          deleteNext();
+        });
+      });
+    }
+
+    const deleteThenMigrate = function() {
+      deleteData()
+        .then(() => migrateData())
+        .catch((err) => done(err));
+    }
+
     // Load the destination form to determine if it exists...
-    destForm.load().then(() => migrateData()).catch(() => {
+    destForm.load().then(() => deleteThenMigrate()).catch(() => {
       console.log('');
       console.log(`Creating form ${_dest}`);
       const srcForm = new options.formio.Form(_src);
@@ -179,7 +307,7 @@ module.exports = function(options, next) {
           }
 
           // Migrate the data to this form.
-          migrateData();
+          deleteThenMigrate();
         });
       });
     });
