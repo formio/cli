@@ -31,7 +31,7 @@ Commands
 #### Migrating an entire project
   You can also migrate an entire project by using the "project" transform as follows.
 
-    formio migrate https://myproject.form.io project https://forms.mydomain.com/myproject
+    formio migrate https://myproject.form.io project https://forms.mydomain.com/myproject --src-key=abc1234 --dst-key=cde2468
 
 #### Migrating from CSV
 In many cases, you may wish to migrate data from a local CSV file into a project submission table. This requires the transform middleware where you will map the columns of your CSV file into the Submission data going into Form.io.
@@ -71,6 +71,26 @@ In many cases, you may wish to migrate data from a local CSV file into a project
    You can now migrate that data into your form with the following command.
 
     formio migrate import.csv transform.js https://myproject.form.io/myform --key [YOUR_API_KEY]
+
+#### Migrate and Delete
+In many cases, when you migrate, you may wish to delete previous submissions during the migration phase. You can do this by adding the following option to your command.
+
+```
+--delete-previous
+```
+
+For example, the following will perform a migration and delete any previous migration records during the migration.
+
+```
+formio migrate https://myproject.form.io project https://forms.mydomain.com/myproject --src-key=abc1234 --dst-key=cde2468 --delete-previous
+```
+
+#### Migrate and Delete Before and After
+You can also provide a window of records that should be deleted using the ```--delete-after``` and ```--delete-before``` flags. The values should be in the format ```2022-05-30T12:00:00.000Z```.  For example, if you wish to migrate your data, but also remove any records before 2022-05-30T09:00:00.000Z and 2022-05-30T12:00:00.000Z, you would provide the following command.
+
+```
+formio migrate https://myproject.form.io project https://forms.mydomain.com/myproject --src-key=abc1234 --dst-key=cde2468 --delete-after=2022-05-30T09:00:00.000Z --delete-before=2022-05-30T12:00:00.000Z --delete-previous
+```
 
 ### Clone
 
