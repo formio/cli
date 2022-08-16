@@ -5,9 +5,9 @@ var _ = require('lodash');
 var fetch = require('node-fetch');
 
 module.exports = function(options, done) {
-  var type = options.params[0];
-  var src = options.params[1];
-  var dest = options.params[2];
+  var type = options.params[0].trim();
+  var src = options.params[1].trim();
+  var dest = options.params[2].trim();
 
   if (!type) {
     return done('You must provide a type.');
@@ -101,7 +101,7 @@ module.exports = function(options, done) {
           }
         })
         .then((form) => {
-          if (form) {
+          if (form && form.components) {
             console.log('Updating existing form');
             form.components = destForm.components;
             form.tags = destForm.tags;
@@ -128,7 +128,15 @@ module.exports = function(options, done) {
               var formPath = parts[3].split('/');
               var projectName = formPath.shift();
               projectUrl += '/' + projectName;
-              name = formPath.join('/');
+              if (formPath.length) {
+                name = formPath.join('/').trim();
+              }
+              else {
+                parts = src.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
+                formPath = parts[3].split('/');
+                formPath.shift();
+                name = formPath.join('/').trim();
+              }
             }
             var newForm = {
               title: 'Copy of ' + destForm.title,
