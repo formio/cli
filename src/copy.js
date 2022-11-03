@@ -55,6 +55,9 @@ module.exports = function(options, done) {
         if (options.srcKey) {
           headers['x-token'] = options.srcKey;
         }
+        if (options.srcAdminKey) {
+          headers['x-admin-key'] = options.srcAdminKey;
+        }
         fetch(src, {
           headers
         })
@@ -88,6 +91,9 @@ module.exports = function(options, done) {
       };
       if (options.dstKey) {
         headers['x-token'] = options.dstKey;
+      }
+      if (options.dstAdminKey) {
+        headers['x-admin-key'] = options.dstAdminKey;
       }
       fetch(dest, {
         headers
