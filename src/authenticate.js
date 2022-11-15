@@ -69,7 +69,7 @@ module.exports = function(config) {
     console.log('This action requires a login to '.green + serverName.green);
 
     // If the API Key is provided.
-    if (options.key) {
+    if (options.key || (options.srcAdminKey && options.dstAdminKey)) {
       console.log('An API Key was provided. Authenticated as Project Owner.');
       console.log('');
       return next(null, formio);
@@ -139,7 +139,9 @@ module.exports = function(config) {
     var authOptions = {
       username: options.username,
       password: options.password,
-      key: options.key
+      key: options.key,
+      srcAdminKey: options.srcAdminKey,
+      dstAdminKey: options.dstAdminKey
     };
 
     if (config && (typeof config[prefix] === 'number')) {
