@@ -144,8 +144,9 @@ module.exports = function(options, done) {
                 name = formPath.join('/').trim();
               }
             }
+            var isSameProject = src.split('/')[3] === dest.split('/')[3];
             var newForm = {
-              title: 'Copy of ' + destForm.title,
+              title: isSameProject ? 'Copy of ' + destForm.title : destForm.title,
               name: _.camelCase(name.split('/').join(' ')),
               path: name,
               type: type,
