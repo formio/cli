@@ -21,12 +21,7 @@ module.exports = function(options, done) {
     return done('You must provide a destination.');
   }
 
-  var destForm = {
-    components: [],
-    properties: null,
-    tags: null,
-    title: null
-  };
+  var destForm = {};
   var sourceForms = src.split(',');
 
   async.series([
@@ -40,10 +35,12 @@ module.exports = function(options, done) {
       }
 
       var copyComponents = function(form, cb) {
-        destForm.title = destForm.title || form.title;
-        destForm.components = form.components;
-        destForm.tags = destForm.tags || form.tags;
-        destForm.properties = destForm.properties || form.properties;
+        if (options.full) {
+          destForm = _.omit(form, ['_id', '_vid', 'created', 'modified', 'machineName']);
+        }
+        else {
+          destForm = _.pick(form, ['title', 'components', 'tags', 'properties']);
+        }
         return cb();
       };
 
@@ -108,13 +105,11 @@ module.exports = function(options, done) {
         })
         .then((form) => {
           if (form && form.components) {
-            console.log('Updating existing form');
-            form.components = destForm.components;
-            form.tags = destForm.tags;
-            form.properties = destForm.properties;
+            console.log('Updating existing ' + type);
+            var updatedForm = _.assign(form, destForm);
             fetch(dest, {
               method: 'PUT',
-              body: JSON.stringify(form),
+              body: JSON.stringify(updatedForm),
               headers,
             })
               .then(resp => resp.json())
@@ -145,16 +140,13 @@ module.exports = function(options, done) {
               }
             }
             var isSameProject = src.split('/')[3] === dest.split('/')[3];
-            var newForm = {
+            var newForm = _.assign({}, destForm, {
               title: isSameProject ? 'Copy of ' + destForm.title : destForm.title,
               name: _.camelCase(name.split('/').join(' ')),
               path: name,
-              type: type,
-              tags: destForm.tags,
-              components: destForm.components,
-              properties: destForm.properties
-            };
-            console.log('Creating new form');
+              type: type
+            });
+            console.log('Creating new ' + type);
             fetch(projectUrl + '/form', {
               method: 'POST',
               body: JSON.stringify(newForm),
