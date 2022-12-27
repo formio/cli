@@ -19,6 +19,7 @@ module.exports = function(program, next) {
     .option('--password [password]', 'The destination password')
     .option('--src-password [password]', 'The source password')
     .option('--dst-password [password]', 'The destination password')
+    .option('--full', 'Will copy full form or resource structure')
     .action(series([
       require('../src/authenticate')({
         src: 1,
