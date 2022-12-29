@@ -19,24 +19,17 @@ module.exports = function(config) {
   var getServerOptions = function(path, options) {
     if (path.indexOf('http') === 0) {
       var urlObject = url.parse(path);
-      // Check if this is the format of http://project.server.com or http://project.localhost
-      var hostParts = urlObject.hostname.split('.');
-      var pathParts = urlObject.pathname.split('/');
-      // Always starts with an empty element. Throw it away.
-      if (pathParts.length > 0) {
-        pathParts.shift();
+      var pathnameParts = urlObject.pathname.split('/').filter(Boolean);
+      // If the url contains 'project' (ex. http://localhost:3000/project/63ac4f3768baf92d9bb0106f)
+      // then we extract project id from it, else - get the project name
+      if (urlObject.href.match(/http[s]?:\/\/[^/]+\/project\//)) {
+        options.projectId = pathnameParts[1];
       }
-      if (hostParts.length === 3 || (hostParts.length === 2 && hostParts[1] === 'localhost')) {
-        options.projectName = hostParts.shift();
-        urlObject.hostname = hostParts.join('.');
-        urlObject.host = urlObject.hostname + (urlObject.port ? ':' + urlObject.port : '');
+      else {
+        options.projectName = pathnameParts[0];
       }
-      // Check if this is the format of http://server.com/project/{projectId}
-      else if (pathParts.length > 1 && pathParts[0] === 'project') {
-        options.projectId = pathParts[1];
-      }
-      urlObject.path = urlObject.pathname = '';
-      options.server = url.format(urlObject);
+
+      options.server = urlObject.href.replace(urlObject.pathname, '');
       options.host = urlObject.host;
       // Slice gets rid of the ":" at the end.
       options.protocol = urlObject.protocol.slice(0, -1);
@@ -96,7 +89,7 @@ module.exports = function(config) {
       }
 
       // First authenticate.
-      console.log('Authenticating to ' + options.server);
+      console.log('Authenticating to ' + _.get(options, 'formio.config.formio'));
       formio.authenticate(options.username, options.password).then(function() {
         console.log('Authentication successful');
         next(null, formio);
