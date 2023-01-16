@@ -17,7 +17,8 @@ module.exports = function(options) {
   options.formio = Formio({
     formio: options.protocol + '://' + options.primary + '.' + options.host,
     api: options.protocol + '://api.' + options.host,
-    key: options.key
+    key: options.key,
+    adminKey: options.adminKey
   });
 
   // Return the formio service.

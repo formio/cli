@@ -28,6 +28,9 @@ module.exports = function(options, next) {
   ) {
     requestHeaders['x-jwt-token'] = options.formio.currentUser.token;
   }
+  else if (options.formio.adminKey) {
+    requestHeaders['x-admin-key'] = options.formio.adminKey;
+  }
 
   // Create the submission request.
   var stream = request({

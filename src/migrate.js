@@ -35,6 +35,9 @@ module.exports = function(options, next) {
       else if (formio.currentUser && formio.currentUser.token) {
         headers[type]['x-jwt-token'] = formio.currentUser.token;
       }
+      else if (formio.adminKey) {
+        headers[type]['x-admin-key'] = formio.adminKey;
+      }
     }
     if (headers[type]) {
       headers[type]['content-type'] = 'application/json';
@@ -171,11 +174,11 @@ module.exports = function(options, next) {
                 console.log(err);
                 return nextItem();
               }
-    
+
               if (!transformed) {
                 return nextItem();
               }
-    
+
               // Submit to the destination form.
               destForm.submit(transformed).then(function(response) {
                 if (parseInt(response.statusCode / 100, 10) != 2) {
