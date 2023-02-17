@@ -9,8 +9,9 @@ module.exports = function(program, next) {
     .option('-p, --protocol [protocol]', 'Change the protocol.')
     .option('-h, --host [host]', 'Set the host for the copy.')
     .option('--key [key]', 'The API Key to provide to the destination forms.')
-    .option('--username [username]', 'The destination username to authenticate with')
-    .option('--password [password]', 'The destination password')
+    .option('--admin-key [key]', 'The Admin API Key to provide to the destination forms')
+    .option('--username [username] (DEPRECATED)', 'The destination username to authenticate with')
+    .option('--password [password] (DEPRECATED)', 'The destination password')
     .action(series([
       require('../src/authenticate')({
         dst: 0
