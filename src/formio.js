@@ -11,11 +11,10 @@ module.exports = function(options) {
   var parts = options.server.split('://');
   options.protocol = options.protocol || parts[0];
   options.host = options.host || parts[1];
-  options.primary = options.primary || 'formio';
 
   // Create the Form.io service.
   options.formio = Formio({
-    formio: options.protocol + '://' + options.primary + '.' + options.host,
+    formio: options.protocol + '://' + options.host + '/formio',
     api: options.protocol + '://api.' + options.host,
     key: options.key,
     adminKey: options.adminKey
