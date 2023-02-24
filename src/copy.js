@@ -92,6 +92,9 @@ module.exports = function(options, done) {
       if (options.dstAdminKey) {
         headers['x-admin-key'] = options.dstAdminKey;
       }
+      if (options.dstFormio && options.dstFormio.currentUser) {
+        headers['x-jwt-token'] = _.get(options, 'dstFormio.currentUser.token');
+      }
       fetch(dest, {
         headers
       })
