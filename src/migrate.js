@@ -5,7 +5,6 @@ const parse = require('csv-parse');
 const JSONStream = require('JSONStream');
 const transform = require('stream-transform');
 const request = require('request');
-const _ = require('lodash');
 const formTransform = require('./transforms/form');
 
 module.exports = function(options, next) {
@@ -134,8 +133,10 @@ module.exports = function(options, next) {
       console.log('');
       process.stdout.write(`Migrating to ${_dest}`);
       // Determine the stream based on the source type.
-      var stream = null;
-      if (src.substr(-4) === '.csv') {
+      let stream = null;
+      const isFile = src.trim().endsWith('.csv');
+
+      if (isFile) {
         stream = fs.createReadStream(process.cwd() + '/' + _src).pipe(parse({
           ltrim: true,
           rtrim: true
@@ -147,7 +148,7 @@ module.exports = function(options, next) {
             method: 'GET',
             rejectUnauthorized: false,
             url: _src + '/submission',
-            qs: { select: '_id', limit: '10000000' },
+            qs: {select: '_id', limit: '10000000'},
             headers: headers.src
           }).pipe(JSONStream.parse('*'));
         }
@@ -156,47 +157,54 @@ module.exports = function(options, next) {
         }
       }
 
-      const streamTransform = transform(function(record, nextItem) {
-        request({
-          json: true,
-          method: 'GET',
-          rejectUnauthorized: false,
-          url: _src + '/submission/' + record._id,
-          headers: headers.src
-        }, (err, response) => {
-          if (err) {
-            console.log(err);
-            return nextItem();
+      const transformAndSubmitRecord = (rec, next) => _transformer(rec, (err, transformed) => {
+        if (err) {
+          console.log(err);
+          return next();
+        }
+
+        if (!transformed) {
+          return next();
+        }
+
+        // Submit to the destination form.
+        destForm.submit(transformed).then(function(response) {
+          if (parseInt(response.statusCode / 100, 10) !== 2) {
+            console.log('');
+            console.log(response.body);
+            console.log(transformed);
           }
-          deletePrevious(record, () => {
-            _transformer(response.body, function(err, transformed) {
-              if (err) {
-                console.log(err);
-                return nextItem();
-              }
+          else {
+            process.stdout.write('.');
+          }
+          next();
+        }).catch(function(err) {
+          console.log(JSON.stringify(err.response.body));
+          return next();
+        });
+      });
 
-              if (!transformed) {
-                return nextItem();
-              }
-
-              // Submit to the destination form.
-              destForm.submit(transformed).then(function(response) {
-                if (parseInt(response.statusCode / 100, 10) != 2) {
-                  console.log('');
-                  console.log(response.body);
-                  console.log(transformed);
-                }
-                else {
-                  process.stdout.write('.');
-                }
-                nextItem();
-              }).catch(function(err) {
-                console.log(JSON.stringify(err.response.body));
-                return nextItem();
-              });
+      const streamTransform = transform(function(record, nextItem) {
+        if (isFile) {
+          transformAndSubmitRecord(record, nextItem);
+        }
+        else {
+          request({
+            json: true,
+            method: 'GET',
+            rejectUnauthorized: false,
+            url: _src + '/submission/' + record._id,
+            headers: headers.src
+          }, (err, response) => {
+            if (err) {
+              console.log(err);
+              return nextItem();
+            }
+            deletePrevious(record, () => {
+              transformAndSubmitRecord(response.body, nextItem);
             });
           });
-        });
+        }
       }, {
         parallel: isProject ? 1 : 100
       });
@@ -277,13 +285,14 @@ module.exports = function(options, next) {
           deleteNext();
         });
       });
-    }
+    };
 
     const deleteThenMigrate = function() {
       deleteData()
         .then(() => migrateData())
-        .catch((err) => done(err));
-    }
+        .catch((err) => done(err))
+        .finally(() => console.log('Done!'));
+    };
 
     // Load the destination form to determine if it exists...
     destForm.load().then(() => deleteThenMigrate()).catch(() => {
@@ -365,6 +374,5 @@ module.exports = function(options, next) {
 
       return next();
     });
-  })
-
+  });
 };
