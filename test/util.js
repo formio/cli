@@ -1,148 +1,107 @@
-var cp = require('child_process');
-var Formio = require('formio-service');
-var async = require('async');
-var Chance = require('chance');
-var chance = new Chance();
-var _ = require('lodash');
-
+'use strict';
+const Cloner = require('../src/Cloner');
+const {faker} = require('@faker-js/faker');
 module.exports = {
-  registerUser: function(formio, done) {
-    formio.register({
-      name: chance.word(),
-      email: chance.email(),
-      password: '123testing',
-      verifyPassword: '123testing'
-    }).then(function() {
-      done()
-    }).catch(done);
-  },
-  createProject: function(project, done) {
-    project.create({
-      title: 'Test Project'
-    }).then(function() {
-      done();
-    }).catch(done);
-  },
-  createForms: function(project, forms, done) {
-    project.forms = {};
-    if (
-      !forms ||
-      ((typeof forms) === 'undefined') ||
-      ((typeof forms) === 'string') ||
-      !forms.length
-    ) {
-      return done();
-    }
-    async.eachSeries(forms, function(formName, next) {
-      if (!formName) {
-        return next('Form not found');
-      }
-      var form = require('./forms/' + formName + '.json');
-      if (!form) {
-        return next('Form not found');
-      }
-      project.createForm(form).then(function(formObj) {
-        project.forms[formName] = formObj.form;
-        next();
-      }).catch(next);
-    }, done);
-  },
-  project: function(params, done) {
-    params.formio = this.url('formio', params.server);
-    params.api = this.url('api', params.server);
-    var formio = Formio({formio: params.formio, api: params.api});
-    var project = new formio.Project();
-    project.server = params.server;
-    var pipeline = [];
-    if (!params.user) {
-      pipeline.push(async.apply(this.registerUser.bind(this), formio));
+  async newDeployment(srcDb, dstDb, oss) {
+    const cloner = new Cloner(srcDb, dstDb);
+    const roles = [];
+    const forms = [];
+    const submissions = [];
+    const actions = [];
+    const actionItems = [];
+    await cloner.connect();
+    const project = {
+      title: `Test Project ${faker.string.alphanumeric(10)}`,
+      name: `test${faker.string.alpha(10)}`,
+      type: 'project',
+      tag: '0.0.0',
+      owner: null,
+      project: null,
+      deleted: null,
+      created: new Date(),
+      modified: new Date()
+    };
+    if (oss) {
+      project._id = (await cloner.dest.projects.insertOne(project)).insertedId;
     }
     else {
-      project.formio.currentUser = params.user;
+      project._id = (await cloner.src.projects.insertOne(project)).insertedId;
     }
-    pipeline.push(async.apply(this.createProject.bind(this), project));
-    pipeline.push(async.apply(this.createForms.bind(this), project, params.forms));
-    async.series(pipeline, function(err) {
-      if (err) {
-        return done(err);
+    for (let i = 0; i < 5; i++) {
+      const role = {
+        title: faker.person.jobType,
+        description: '',
+        deleted: null,
+        default: false,
+        admin: false,
+        created: new Date(),
+        modified: new Date()
+      };
+      if (!oss) {
+        role.project = project._id;
       }
-      done(null, project);
-    });
-  },
-  form: function(project, form) {
-    var path = form;
-    if (
-      project.forms &&
-      project.forms.hasOwnProperty(form) &&
-      project.forms[form].path
-    ) {
-      path = project.forms[form].path;
+      role._id = (await cloner.src.roles.insertOne(role)).insertedId;
+      roles.push(role);
     }
-    return this.url(
-      project.project.name,
-      project.server,
-      path
-    );
-  },
-  projectUrl: function(project) {
-    return this.url(
-      project.project.name,
-      project.server
-    );
-  },
-  url: function(subdomain, server, path) {
-    var url = 'http://' + subdomain + '.' + server;
-    if (path) {
-      url += '/' + path;
-    }
-    return url;
-  },
-  execute: function(cmd, inputs, done) {
-    var result = null;
-    var output = '';
-    var callDone = _.once(done);
-    var process = cp.spawn('../bin/formio', cmd.split(' '), {
-      cwd: __dirname
-    });
-    process.stderr.on('data', function(err) {
-      console.log(err.toString());
-    });
-    process.stdout.on('data', function(data) {
-      var line = data.toString();
-      output += line;
-      var input = '';
-      if (line.indexOf('prompt:') === 0) {
-        input = inputs.shift() + '\n';
-        setTimeout(function() {
-          if (inputs.length) {
-            process.stdin.write(input);
+    for (let i = 0; i < 5; i++) {
+      const form = {
+        title: `Form ${faker.string.alpha(10)}`,
+        path: faker.string.alpha(10),
+        name: faker.string.alpha(10),
+        type: 'form',
+        deleted: null,
+        components: [
+          {type: 'textfield', key: 'a', label: 'A'},
+          {type: 'textfield', key: 'b', label: 'B'},
+          {type: 'textfield', key: 'c', label: 'C'}
+        ]
+      };
+      if (!oss) {
+        form.project = project._id;
+      }
+      form._id = (await cloner.src.forms.insertOne(form)).insertedId;
+      forms.push(form);
+      const action = {
+        title: 'Save Submission',
+        name: 'save',
+        handler: ['before'],
+        method: ['create', 'update'],
+        priority: 10,
+        form: form._id,
+        deleted: null,
+        settings: {}
+      };
+      action._id = (await cloner.src.actions.insertOne(action)).insertedId;
+      actions.push(action);
+      for (let j = 0; j < 20; j++) {
+        const submission = {
+          form: form._id,
+          owner: null,
+          deleted: null,
+          roles: [],
+          access: [],
+          metadata: {},
+          data: {
+            a: faker.string.alpha(10),
+            b: faker.string.alpha(10),
+            c: faker.string.alpha(10)
           }
-          else {
-            process.stdin.end(input);
-          }
-        }, 10);
-      }
-      if (typeof result === 'boolean') {
-        result = JSON.parse(line);
-      }
-      if (line.indexOf('RESULT:') === 0) {
-        line = line.replace('RESULT:', '');
-        if (line) {
-          result = JSON.parse(line);
+        };
+        if (!oss) {
+          submission.project = project._id;
         }
-        else {
-          result = true;
-        }
+        submission._id = (await cloner.src.submissions.insertOne(submission)).insertedId;
+        submissions.push(submission);
       }
-    });
-    process.on('close', function() {
-      callDone(null, result, output);
-    });
-    process.on('disconnect', function() {
-      callDone(null, result, output);
-    });
-    process.on('error', function(err) {
-      callDone(err);
-    });
+    }
+    return {
+      cloner,
+      project,
+      roles,
+      forms,
+      submissions,
+      actions,
+      actionItems
+    };
   }
 };
