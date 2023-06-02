@@ -1,3 +1,4 @@
+/* eslint-disable max-depth */
 'use strict';
 const {MongoClient, ObjectId} = require('mongodb');
 const fs = require('fs');
@@ -196,14 +197,14 @@ class Cloner {
         }
         else {
           const destItem = await this.dest[collection].findOne(findQuery(current));
-          const updatedItem = _.assign(destItem || {}, _.omit(srcItem, '_id'));
+          const updatedItem = _.assign(destItem || {}, srcItem);
           await this.before(collection, beforeEach, updatedItem, destItem);
           if (destItem) {
             // eslint-disable-next-line max-len
-            await this.dest[collection].updateOne(findQuery(current), {$set: _.omit(updatedItem, ['_id', 'machineName'])});
+            await this.dest[collection].updateOne(findQuery(current), {$set: _.omit(updatedItem, ['_id', 'machineName', 'settings_encrypted'])});
           }
           else {
-            current._id = (await this.dest[collection].insertOne(updatedItem)).insertedId;
+            current._id = (await this.dest[collection].insertOne(_.omit(updatedItem, ['_id']))).insertedId;
           }
         }
         await this.after(collection, afterEach, srcItem, await this.dest[collection].findOne(findQuery(current)));
@@ -392,6 +393,7 @@ class Cloner {
       submission.form = destForm._id;
       submission.project = destForm.project;
       this.migrateDataEncryption(submission);
+      this.migrateRoles(submission.roles);
     }, async(srcSubmission, destSubmission) => {
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission);
     });
@@ -414,6 +416,23 @@ class Cloner {
   }
 
   /**
+   * Provided the source resource id, and the destination project, this will return the equivalent destination resource id.
+   * @param {*} srcId - The source resource id.
+   * @param {*} destProjectId - The destination project id.
+   */
+  async getDestinationResourceId(srcId, destProjectId) {
+    const srcResource = await this.src.forms.findOne({_id: new ObjectId(srcId.toString())});
+    if (srcResource) {
+      // eslint-disable-next-line max-len
+      const destResource = await this.dest.forms.findOne({name: srcResource.name, project: new ObjectId(destProjectId.toString())});
+      if (destResource) {
+        return destResource._id.toString();
+      }
+    }
+    return srcId.toString();
+  }
+
+  /**
    * Clone actions from one form to another.
    * @param {*} srcForm - The source form to clone actions from.
    * @param {*} destForm - The destination form to clone actions to.
@@ -423,8 +442,16 @@ class Cloner {
     process.stdout.write('         - Actions:');
     await this.upsertAll('actions', this.itemQuery({
       form: srcForm._id
-    }), (action) => {
+    }), async(action) => {
       action.form = destForm._id;
+
+      // See if we need to update the resources.
+      if (action.settings && action.settings.resources) {
+        for (let i = 0; i < action.settings.resources.length; i++) {
+          const srcId = action.settings.resources[i];
+          action.settings.resources[i] = await this.getDestinationResourceId(srcId, destForm.project);
+        }
+      }
     });
   }
 
@@ -441,12 +468,16 @@ class Cloner {
       process.stdout.write(`      - Form: ${srcForm.title}`);
       this.setCollection(srcForm, srcProject, destProject);
       srcForm.project = destProject._id;
-    }, async(srcForm, destForm) => {
-      Utils.eachComponent(srcForm.components, (component, path) => {
+      Utils.eachComponent(srcForm.components, async(component, path) => {
         if (component.encrypted) {
           this.encryptedFields.push(path);
         }
+        if (component.data && component.data.resource) {
+          component.data.resource = await this.getDestinationResourceId(component.data.resource, destProject._id);
+        }
       });
+      await this.migrateFormAccess(srcForm);
+    }, async(srcForm, destForm) => {
       await this.cloneSubmissions(srcForm, destForm);
       await this.cloneActions(srcForm, destForm);
       this.encryptedFields = [];
@@ -490,18 +521,18 @@ class Cloner {
 
   async cloneAllSubmissions() {
     process.stdout.write('\n');
-    process.stdout.write(`Cloning submissions from ${this.options.srcProject} to ${this.options.dstProject}.`);
+    process.stdout.write(`Cloning submissions from ${this.sourceProject} to ${this.options.dstProject}.`);
     process.stdout.write('\n');
     if (!this.options.dstProject) {
       return console.log('You must provide a destination project. --dst-project=<project_id>');
     }
 
-    if (!this.options.srcProject) {
+    if (!this.sourceProject) {
       return console.log('You must provide a source project. --src-project=<project_id>');
     }
 
     // Load the source project.
-    const srcProj = await this.src.projects.findOne({_id: new ObjectId(this.options.srcProject)});
+    const srcProj = await this.src.projects.findOne({_id: new ObjectId(this.sourceProject)});
 
     // Load the destination project.
     const destProj = await this.dest.projects.findOne({_id: new ObjectId(this.options.dstProject)});
@@ -512,7 +543,7 @@ class Cloner {
     }), async(destForm) => {
       // Find the equivalent form in the source project.
       const srcForm = await this.src.forms.findOne({
-        project: new ObjectId(this.options.srcProject),
+        project: new ObjectId(this.sourceProject),
         name: destForm.name
       });
       if (!srcForm) {
@@ -529,6 +560,46 @@ class Cloner {
       }
       await this.cloneSubmissions(srcForm, destForm);
     });
+  }
+
+  /**
+   * Migrate a roles array to use destination roles instead of source roles.
+   * @param {*} roles - An array of role ids that need to be migrated.
+   */
+  migrateRoles(roles) {
+    if (roles && roles.length) {
+      roles.forEach((roleId, roleIndex) => {
+        const srcRole = this.srcRoles.find((role) => role._id.toString() === roleId.toString());
+        if (!srcRole) {
+          return;
+        }
+        const roleTitle = srcRole.title;
+        const dstRole = this.destRoles.find((role) => role.title === roleTitle);
+        if (!dstRole || !dstRole._id) {
+          return;
+        }
+        roles[roleIndex] = new ObjectId(dstRole._id.toString());
+      });
+    }
+  }
+
+  /**
+   * Migrate access array to use destination roles instead of source roles.
+   * @param {*} access - An access array.
+   */
+  migrateAccess(access) {
+    if (access && access.length) {
+      access.forEach((roleAccess) => this.migrateRoles(roleAccess.roles));
+    }
+  }
+
+  /**
+   * Migrate the form access to use destination roles instead of source roles.
+   * @param {*} item 
+   */
+  async migrateFormAccess(item) {
+    this.migrateAccess(item.access);
+    this.migrateAccess(item.submissionAccess);
   }
 
   /**
@@ -573,6 +644,15 @@ class Cloner {
       if (formioOwner) {
         srcProject.owner = formioOwner;
       }
+
+      // Set the source and destination roles for this project.
+      this.srcRoles = await this.src.roles.find({project: srcProject._id}).toArray();
+      this.destRoles = await this.dest.roles.find({project: dstProject._id}).toArray();
+
+      // Migrate the settings.
+      await this.migrateSettings(srcProject, dstProject);
+      await this.migrateFormAccess(srcProject);
+
       // Keep the team access.
       if (srcProject.access) {
         let newAccess = [];
@@ -590,18 +670,22 @@ class Cloner {
         }
         srcProject.access = newAccess;
       }
-
-      // Migrate the settings.
-      await this.migrateSettings(srcProject, dstProject);
     }, async(srcProject, destProject) => {
-      // Do not include the formio project
-      if (srcProject && srcProject.name === 'formio') {
+      // Do not include the formio project unless specifically specified.
+      if (
+        (srcProject && srcProject.name === 'formio') &&
+        (this.sourceProject !== srcProject._id.toString())
+      ) {
         return;
       }
       await this.cloneForms(srcProject, destProject);
       await this.cloneRoles(srcProject, destProject);
       await this.cloneTags(srcProject, destProject);
       await this.cloneFormRevisions(srcProject, destProject);
+    }, (srcProject) => {
+      return {
+        name: srcProject.name
+      };
     });
   }
 
