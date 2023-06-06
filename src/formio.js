@@ -14,7 +14,7 @@ module.exports = function(options) {
 
   // Create the Form.io service.
   options.formio = Formio({
-    formio: options.protocol + '://' + options.host + '/formio',
+    formio: options.protocol + '://' + options.host,
     api: options.protocol + '://api.' + options.host,
     key: options.key,
     adminKey: options.adminKey

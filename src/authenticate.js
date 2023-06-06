@@ -72,6 +72,7 @@ module.exports = function(config) {
       console.log('You can create a free account by going to https://portal.form.io/#/auth/register'.green);
     }
     console.log('');
+    console.log('Authentication with credentials will be deprecated in future releases. Please consider using API or Admin keys instead.'.yellow);
 
     /**
      * Authenticate the user.
