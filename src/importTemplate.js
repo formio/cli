@@ -1,56 +1,60 @@
 'use strict';
 
-var _ = require('lodash');
+const _ = require('lodash');
+const fetch = require("./fetch");
 
 module.exports = function(options, next) {
-  if (!options.formio) {
-    return next('Cannot connect to server');
-  }
-  var template = options.template;
+  const fetchWithHeaders = fetch(options);
+  const template = options.template;
 
   // If project exists, this is an update.
   console.log('Importing Template');
-  var formioProject = null;
 
-  formioProject = new options.formio.Project(options.project);
-  formioProject.load(options.project)
-    .then(function() {
-      console.log('Updating Project');
-      var project = formioProject.project;
-      _.assign(project, {
-        template: _.omit(template, 'title', 'description', 'name'),
-        settings: template.settings
-      });
-      formioProject.update(project).then(function() {
-        console.log('Project Updated');
-        next();
-      }).catch(next);
-    })
-    .catch(function(err) {
-      // If the project doesn't exist, lets create it. Otherwise just throw the error.
-      if (!err.response || err.response.statusCode !== 500) {
-        return next(err);
-      }
+  fetchWithHeaders({
+    url: options.project,
+  }).then(res => {
+    const project = res.body;
 
-      console.log('Creating Project');
-      formioProject = new options.formio.Project();
-      template.settings = template.settings || {};
-      if (!template.settings.cors) {
-        template.settings.cors = '*';
-      }
-
-      // Create a project from a template.
-      var project = {
-        title: template.title,
-        description: template.description,
-        name: template.name,
-        template: _.omit(template, 'title', 'description', 'name'),
-        settings: template.settings
-      };
-
-      formioProject.create(project).then(function() {
-        console.log('Project Created');
-        next();
-      }).catch(next);
+    _.assign(project, {
+      template: _.omit(template, 'title', 'description', 'name'),
+      settings: template.settings
     });
+
+    fetchWithHeaders({
+      url: `${options.server}/project/${project._id}`,
+      method: 'PUT',
+      body: project
+    }).then(() => {
+      console.log('Project Updated');
+      next()
+    }).catch(next);
+  }).catch((err) => {
+    if (err.message.includes('500')) {
+      return next(err);
+    }
+
+    template.settings = template.settings || {};
+
+    if (!template.settings.cors) {
+      template.settings.cors = '*';
+    }
+
+    // Create a project from a template.
+    const project = {
+      title: template.title,
+      description: template.description,
+      name: template.name,
+      template: _.omit(template, 'title', 'description', 'name'),
+      settings: template.settings
+    };
+
+    fetchWithHeaders({
+      url: `${options.server}/project`,
+      method: 'POST',
+      body: project
+    }).then(()=> {
+      console.log('Project Created');
+      next();
+    }).catch(next);
+  });
 };

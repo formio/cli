@@ -1,20 +1,19 @@
 'use strict';
+const fetch = require("./fetch");
 
 module.exports = function(options, next) {
-  if (!options.formio) {
-    return next('Cannot connect to server');
-  }
   console.log('Exporting Template');
-  var project = new options.formio.Project(options.project);
-  project.export().then(function() {
-    options.template = project.template;
+  fetch(options)({
+    url: `${options.project}/export`
+  }).then(({ body }) => {
+    options.template = body
     if (
       !process.env.TEST_SUITE &&
-      project.template.plan &&
-      (project.template.plan === 'basic')
+      body.plan &&
+      (body.plan === 'basic' || body.plan === 'archived')
     ) {
       return next('Deploy is only available for projects on a paid plan.');
     }
     next();
-  }).catch(next);
+  }).catch(next)
 };

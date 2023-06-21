@@ -3,7 +3,6 @@
 /**
  * Provides a way to authenticate commands against Form.io
  */
-var _ = require('lodash');
 var async = require('async');
 var url = require('url');
 var prompt = require('prompt');
@@ -50,8 +49,6 @@ module.exports = function(config) {
    * @returns {*}
    */
   var authenticate = function(text, options, next) {
-    var formio = require('./formio')(options);
-
     // Let them know what is going on.
     console.log('');
     var serverName = text;
@@ -65,73 +62,18 @@ module.exports = function(config) {
     if (options.key || options.adminKey || (options.srcAdminKey && options.dstAdminKey)) {
       console.log('An API Key was provided. Authenticated as Project Owner.');
       console.log('');
-      return next(null, formio);
+      return next(null);
     }
 
     if (options.server === 'https://form.io') {
       console.log('You can create a free account by going to https://portal.form.io/#/auth/register'.green);
     }
-    console.log('');
 
-    /**
-     * Authenticate the user.
-     * @param email
-     * @param password
-     * @private
-     */
-    var authExecute = function() {
-      if (!options.username) {
-        return next('Username is required to authenticate.');
-      }
-
-      if (!options.password) {
-        return next('Password is required to authenticate.');
-      }
-
-      // First authenticate.
-      console.log('Authenticating to ' + _.get(options, 'formio.config.formio'));
-      formio.authenticate(options.username, options.password).then(function() {
-        console.log('Authentication successful');
-        next(null, formio);
-      }).catch(next);
-    };
-
-    // If they provide the username and password.
-    if (options.username && options.password) {
-      authExecute();
-    }
-    else {
-      var properties = {};
-      if (!options.username) {
-        properties.username = {
-          message: 'Enter your email',
-          required: true
-        };
-      }
-
-      if (!options.password) {
-        properties.password = {
-          message: 'Enter your password',
-          required: true,
-          hidden: true
-        };
-      }
-
-      // First authenticate into Form.io.
-      prompt.get({properties: properties}, function (err, result) {
-        if (err) {
-          return next(err);
-        }
-        options = _.assign(options, result);
-        authExecute();
-      });
-    }
+    return next('Either API key(s) or Admin key(s) should be provided to authenticate');
   };
 
   var getAuthOptions = function(prefix, options) {
     var authOptions = {
-      username: options.username,
-      password: options.password,
       key: options.key,
       adminKey: options.adminKey,
       srcAdminKey: options.srcAdminKey,
@@ -148,12 +90,6 @@ module.exports = function(config) {
       getServerOptions(options.params[paramIndex], authOptions);
     }
 
-    if (options[prefix + 'Password']) {
-      authOptions.password = options[prefix + 'Password'];
-    }
-    if (options[prefix + 'Username']) {
-      authOptions.username = options[prefix + 'Username'];
-    }
     if (options[prefix + 'Key']) {
       authOptions.key = options[prefix + 'Key'];
     }
@@ -179,11 +115,12 @@ module.exports = function(config) {
         if (!srcOptions) {
           return next();
         }
-        authenticate('SOURCE', srcOptions, function(err, formio) {
+
+        authenticate('SOURCE', srcOptions, function(err) {
           if (err) {
             return next(err);
           }
-          options.srcFormio = formio;
+          options.srcOptions = srcOptions;
           next();
         });
       },
@@ -194,24 +131,24 @@ module.exports = function(config) {
           return next();
         }
 
-        // Use the source formio if the servers are the same and the destination does not have creds.
+        // Use the dstOptions if the servers are the same and the destination does not have creds.
         if (
           srcOptions &&
           srcOptions.server &&
           (srcOptions.server === dstOptions.server) &&
           (!dstOptions.key)
         ) {
-          options.dstFormio = options.formio = options.srcFormio;
+          options.dstOptions = srcOptions;
           return next();
         }
 
         // Authenticate to the destination.
         var text = (srcOptions && srcOptions.server) ? 'DESTINATION' : '';
-        authenticate(text, dstOptions, function(err, formio) {
+        authenticate(text, dstOptions, function(err) {
           if (err) {
             return next(err);
           }
-          options.dstFormio = options.formio = formio;
+          options.dstOptions = dstOptions;
           next();
         });
       }
