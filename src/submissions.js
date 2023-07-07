@@ -10,26 +10,16 @@ module.exports = function(options, next) {
     return next('You must provide a source form to load submissions.');
   }
 
-  if (!options.formio) {
-    return next('No Form.io server provided');
-  }
-
   // Determine the stream based on the source type.
   var requestHeaders = {
     'content-type': 'application/json'
   };
-  if (options.formio.apiKey) {
-    requestHeaders['x-token'] = options.formio.apiKey;
+
+  if (options.dstOptions.key) {
+    requestHeaders['x-token'] = options.key;
   }
-  else if (
-    options.formio &&
-    options.formio.currentUser &&
-    options.formio.currentUser.token
-  ) {
-    requestHeaders['x-jwt-token'] = options.formio.currentUser.token;
-  }
-  else if (options.formio.adminKey) {
-    requestHeaders['x-admin-key'] = options.formio.adminKey;
+  else if (options.dstOptions.adminKey) {
+    requestHeaders['x-admin-key'] = options.adminKey;
   }
 
   // Create the submission request.
@@ -37,7 +27,7 @@ module.exports = function(options, next) {
     method: 'GET',
     rejectUnauthorized: false,
     url: src + '/submission',
-    qs: { limit: '10000000' },
+    qs: {limit: '10000000'},
     headers: requestHeaders
   });
 

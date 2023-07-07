@@ -1,18 +1,17 @@
 'use strict';
 
-var async = require('async');
-var _ = require('lodash');
-var loadTemplate = require(__dirname + '/loadTemplate');
-var exportTemplate = require(__dirname + '/exportTemplate');
-var importTemplate = require(__dirname + '/importTemplate');
+const async = require('async');
+const _ = require('lodash');
+const loadTemplate = require(__dirname + '/loadTemplate');
+const exportTemplate = require(__dirname + '/exportTemplate');
+const importTemplate = require(__dirname + '/importTemplate');
 
 module.exports = function(options, next) {
-  var steps = [];
+  const steps = [];
 
   // Setup the source options.
-  var srcOptions = _.clone(options);
+  const srcOptions = _.clone(options.srcOptions);
   srcOptions.project = options.params[0];
-  srcOptions.formio = options.srcFormio;
   if (srcOptions.project.indexOf('.json') !== -1) {
     steps.push(_.partial(loadTemplate, srcOptions));
   }
@@ -21,9 +20,8 @@ module.exports = function(options, next) {
   }
 
   // Setup the destination options.
-  var dstOptions = _.clone(options);
+  const dstOptions = _.clone(options.dstOptions);
   dstOptions.project = options.params[1];
-  dstOptions.formio = options.formio;
 
   // Copy the template from source to destination.
   steps.push(_.partial(function(src, dst, next) {

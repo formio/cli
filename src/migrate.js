@@ -6,6 +6,7 @@ const JSONStream = require('JSONStream');
 const transform = require('stream-transform');
 const request = require('request');
 const formTransform = require('./transforms/form');
+const fetch = require('./fetch');
 
 module.exports = function(options, next) {
   let isProject = false;
@@ -25,17 +26,14 @@ module.exports = function(options, next) {
   }
 
   const headers = {};
-  function setHeaders(type, formio) {
-    if (formio) {
+  function setHeaders(type, options) {
+    if (options) {
       headers[type] = {};
-      if (formio.apiKey) {
-        headers[type]['x-token'] = formio.apiKey;
+      if (options.key) {
+        headers[type]['x-token'] = options.key
       }
-      else if (formio.currentUser && formio.currentUser.token) {
-        headers[type]['x-jwt-token'] = formio.currentUser.token;
-      }
-      else if (formio.adminKey) {
-        headers[type]['x-admin-key'] = formio.adminKey;
+      else if (options.adminKey) {
+        headers[type]['x-admin-key'] = options.adminKey;
       }
     }
     if (headers[type]) {
@@ -43,8 +41,8 @@ module.exports = function(options, next) {
     }
   }
 
-  setHeaders('src', options.srcFormio);
-  setHeaders('dst', options.dstFormio);
+  setHeaders('src', options.srcOptions);
+  setHeaders('dst', options.dstOptions);
 
   /**
    * Migrate a single form.
@@ -65,10 +63,6 @@ module.exports = function(options, next) {
 
     if (!_dest) {
       return done('You must provide a destination form.');
-    }
-
-    if (!options.formio) {
-      return done('No Form.io server provided');
     }
 
     // If they provide a form as the transform, then just use the form
@@ -127,11 +121,9 @@ module.exports = function(options, next) {
       });
     };
 
-    // Create a form object.
-    var destForm = new options.formio.Form(_dest);
     const migrateData = function() {
       console.log('');
-      process.stdout.write(`Migrating to ${_dest}`);
+      process.stdout.write(`Migrating to ${_dest} `);
       // Determine the stream based on the source type.
       let stream = null;
       const isFile = src.trim().endsWith('.csv');
@@ -142,7 +134,7 @@ module.exports = function(options, next) {
           rtrim: true
         }));
       }
-      else if (options.srcFormio) {
+      else {
         try {
           stream = request({
             method: 'GET',
@@ -167,19 +159,17 @@ module.exports = function(options, next) {
           return next();
         }
 
+        const dstFormSubmitUrl = `${_dest}/submission${transformed._id ? '/' + transformed._id : ''}`;
+
         // Submit to the destination form.
-        destForm.submit(transformed).then(function(response) {
-          if (parseInt(response.statusCode / 100, 10) !== 2) {
-            console.log('');
-            console.log(response.body);
-            console.log(transformed);
-          }
-          else {
-            process.stdout.write('.');
-          }
+        fetch(options.dstOptions)({
+          url: dstFormSubmitUrl,
+          method: transformed._id ? 'PUT' : 'POST',
+          body: transformed
+        }).then(() => {
           next();
-        }).catch(function(err) {
-          console.log(JSON.stringify(err.response.body));
+        }).catch((err) => {
+          console.log(`Failed to submit form: ${err.message}`.red);
           return next();
         });
       });
@@ -295,23 +285,28 @@ module.exports = function(options, next) {
     };
 
     // Load the destination form to determine if it exists...
-    destForm.load().then(() => deleteThenMigrate()).catch(() => {
+    fetch(options.dstOptions)({
+      url: _dest
+    }).then(() => {
+      deleteThenMigrate();
+    }).catch(() => {
       console.log('');
-      console.log(`Creating form ${_dest}`);
-      const srcForm = new options.formio.Form(_src);
-      srcForm.load().then(() => {
-        // Create the missing form.
-        const dstProject = _dest.replace(`/${srcForm.form.path}`, '');
+      console.log(`Creating form ${_dest}`.green);
+
+      fetch(options.srcOptions)({
+        url: _src
+      }).then(({ body }) => {
+        const dstProject = _dest.replace(`/${body.path}`, '');
         request({
           json: true,
           method: 'POST',
           url: `${dstProject}/form`,
           headers: headers.dst,
           body: {
-            title: srcForm.form.title,
-            path: srcForm.form.path,
-            name: srcForm.form.name,
-            components: srcForm.form.components
+            title: body.title,
+            path: body.path,
+            name: body.name,
+            components: body.components
           }
         }, (err, resp) => {
           if (err) {
