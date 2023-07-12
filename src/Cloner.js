@@ -35,7 +35,7 @@ class Cloner {
     this.beforeAll = null;
     this.afterAll = null;
     this.createNew = (mongoSrc === mongoDest);
-    this.createNewProject = !options.dstProject;
+    this.createNewProject = !options.dstProject && !options.updateExisting;
     this.defaultSaltLength = 40;
     this.encryptedFields = [];
     this.formsWithMissingDeps = [];
@@ -196,6 +196,26 @@ class Cloner {
   }
 
   /**
+   * Find the last item in the collection by provided query.
+   * @param {string} collection - The collection where to run find query.
+   * @param {object} query - The query to use to find the item in the database.
+   * @param {object} sort - The sort option to use when searching for the item.
+   */
+  async findLast(collection, query, sort) {
+    if (!collection || !query) {
+      return;
+    }
+    sort = _.assign({created: -1}, sort || {});
+    const [found] = await _.get(this, collection)
+      .find(query)
+      .sort(sort)
+      .limit(1)
+      .toArray();
+
+    return found;
+  }
+
+  /**
    * Upsert a record in the destination database.
    * @param {*} collection - The collection to upsert to.
    * @param {*} query - The query to use to find the document in the source database.
@@ -224,7 +244,7 @@ class Cloner {
 
       try {
         // If there is destProject option passed, skip cloning srcProject
-        if (collection === 'projects' && !this.createNewProject) {
+        if (collection === 'projects' && this.options.dstProject) {
           const destItem = await this.dest[collection].findOne(
             this.query({_id: new ObjectId(this.options.dstProject)})
           );
@@ -233,11 +253,7 @@ class Cloner {
         }
         else {
           // Find the last item matching the query
-          const [destItem] = await this.dest[collection]
-            .find(findQuery(current))
-            .sort(sort)
-            .limit(1)
-            .toArray();
+          const destItem = await this.findLast(`dest.${collection}`, findQuery(current), sort);
 
           // If --update-existing option passed and there is an existing item - update it, else - insert it
           if (this.shouldUpdate(destItem, collection)) {
@@ -502,11 +518,10 @@ class Cloner {
     const srcResource = await this.src.forms.findOne({_id: new ObjectId(srcId.toString())});
     if (srcResource) {
       // Find last cloned item or original if no clones
-      const [destResource] = await this.dest.forms
-        .find({name: this.getCloneFieldRegExp(srcResource.name), project: new ObjectId(destProjectId.toString())})
-        .sort({created: -1})
-        .limit(1)
-        .toArray();
+      const destResource = await this.findLast('dest.forms', {
+        name: this.getCloneFieldRegExp(srcResource.name),
+        project: new ObjectId(destProjectId.toString())
+      });
 
       if (destResource) {
         return destResource._id.toString();
@@ -821,6 +836,7 @@ class Cloner {
   async migrateSettings(srcProject, destProject) {
     if (
       !srcProject ||
+      !destProject ||
       !srcProject.settings ||
       !this.options.srcDbSecret ||
       !this.options.dstDbSecret ||
@@ -838,7 +854,7 @@ class Cloner {
   async cloneProject() {
     process.stdout.write('\n');
     process.stdout.write('Fetching formio project owner.');
-    const formioProject = await this.dest.projects.findOne({name: 'formio'});
+    const formioProject = await this.findLast({name: this.getCloneFieldRegExp('formio')});
     const formioOwner = formioProject ? formioProject.owner : null;
     await this.upsertAll('projects', this.projectQuery(), async(srcProject, destProject) => {
       if (!srcProject) {
@@ -849,19 +865,12 @@ class Cloner {
       process.stdout.write('\n');
       process.stdout.write(`- Project ${srcProject.title}:`);
 
-      if (this.createNewProject) {
+      if (this.createNewProject && destProject) {
         await this.cloneRoles(srcProject, destProject);
       }
       // Set the source and destination roles for this project.
-      this.srcRoles = await this.src.roles
-        .find({project: srcProject._id})
-        .sort({created: -1})
-        .toArray();
-      this.destRoles = destProject ? await this.dest.roles
-        .find({project: destProject._id})
-        .sort({created: -1})
-        .toArray()
-        : [];
+      this.srcRoles = await this.findLast('src.roles', {project: srcProject._id});
+      this.destRoles = destProject ? await this.findLast('dest.roles', {project: destProject._id}) : [];
 
       if (this.createNewProject) {
         if (srcProject.type === 'stage') {
@@ -871,8 +880,10 @@ class Cloner {
           process.exit();
         }
 
-        srcProject.title = `${destProject.title} (Clone)`;
-        srcProject.name = `${destProject.name}-clone`;
+        if (destProject) {
+          srcProject.title = `${destProject.title} (Clone)`;
+          srcProject.name = `${destProject.name}-clone`;
+        }
 
         if (formioOwner) {
           srcProject.owner = formioOwner;
