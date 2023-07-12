@@ -12,9 +12,12 @@ module.exports = function(program, next) {
     .option('-s, --src-project <project_id,...>', 'The Source project ID, or comma separated projects for multiple')
     .option('-d, --dst-project <project_id>', 'The Destination project ID')
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
+    .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning.')
     .option('--src-ca <source_ca>', 'The TLS certificate authority for the source mongo url')
     .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')
     .option('--dst-cert <destination_cert>', 'Allows you to provide the TLS certificate file for connections.')
+    .option('--src-db-secret', 'Source API DB_SECRET config (provide this if your project has encrypted settings of fields).')
+    .option('--dst-db-secret', 'Destination API DB_SECRET config (provide this if your project has encrypted settings of fields).')
     .action((source, destination, options) => require('../src/clone')(source, destination, options));
 };
