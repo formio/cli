@@ -37,9 +37,9 @@ class Cloner {
     this.createNew = (mongoSrc === mongoDest);
     this.createNewProject = !options.dstProject && !options.updateExisting;
     this.defaultSaltLength = 40;
-    this.encryptedFields = [];
     this.formsWithMissingDeps = [];
     this.skipCurrentUpsert = false;
+    this.skipCurrentAfterHook = false;
     this.options = options;
     this.src = null;
     this.dest = null;
@@ -291,6 +291,10 @@ class Cloner {
           if (this.skipCurrentUpsert) {
             this.skipCurrentUpsert = false;
           }
+
+          if (this.skipCurrentAfterHook) {
+            this.skipCurrentAfterHook = false;
+          }
           else {
             await this.after(collection, afterEach, srcItem, await this.dest[collection].findOne(findQuery(current)));
           }
@@ -453,21 +457,22 @@ class Cloner {
    * @param {*} srcSubmission - The source submission that contains the encrypted data.
    * @param {string} decryptKey - The source key to decrypt data (either project.settings.secret or DB_SECRET).
    */
-  async migrateDataEncryption(srcSubmission, decryptKey) {
+  async migrateDataEncryption(srcSubmission, compsWithEncryptedData) {
     if (
-      !this.encryptedFields.length ||
+      !compsWithEncryptedData.length ||
       !this.options.srcDbSecret ||
       !this.options.dstDbSecret ||
-      this.createNew
+      this.options.srcDbSecret === this.options.dstDbSecret
     ) {
       return;
     }
-    this.encryptedFields.forEach((path) => {
-      if (_.get(srcSubmission, path, false)) {
-        _.set(srcSubmission, path, this.encrypt(
-          this.options.dstDbSecret, this.decrypt(
-            decryptKey || this.options.srcDbSecret, _.get(srcSubmission, path)
-          )
+    compsWithEncryptedData.forEach((compPath) => {
+      if (_.get(srcSubmission, `data.${compPath}`, false)) {
+        const decryptedValue = this.decrypt(
+          this.projectSecret || this.options.srcDbSecret, _.get(srcSubmission, `data.${compPath}`)
+        );
+        _.set(srcSubmission, `data.${compPath}`, this.encrypt(
+          this.projectSecret || this.options.dstDbSecret, decryptedValue
         ));
       }
     });
@@ -477,10 +482,10 @@ class Cloner {
    * Clone submissions from one form to another.
    * @param {*} srcForm - The source form from the database.
    * @param {*} destForm - The destination from from the database.
-   * @param {string} decryptKey - The source key to decrypt data (either project.settings.secret or DB_SECRET).
-   * @param {string[]} compsWithReferences - Array with paths of components that have reference.
+   * @param {object[]} compsWithReferences - Array with components path that need to change reference id.
+   * @param {string[]} compsWithEncryptedData - Array with paths of components that are encrypted.
    */
-  async cloneSubmissions(srcForm, destForm, decryptKey, compsWithReferences) {
+  async cloneSubmissions(srcForm, destForm, compsWithReferences, compsWithEncryptedData) {
     process.stdout.write('\n');
     process.stdout.write('         - Submissions:');
     this.prevSubCreated = null;
@@ -494,7 +499,7 @@ class Cloner {
       if (compsWithReferences.length) {
         await this.mapSrcSubmissionToDestSubmission(submission, compsWithReferences);
       }
-      this.migrateDataEncryption(submission, decryptKey);
+      this.migrateDataEncryption(submission, compsWithEncryptedData);
       this.migrateRoles(submission.roles);
     }, async(srcSubmission, destSubmission) => {
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission);
@@ -615,7 +620,7 @@ class Cloner {
   /**
    * Map source submission with references to the destination submission with references
    * @param {object} submission - Source submission with assigned destination form and project ids
-   * @param {Array} compsWithReferences - Array with components path that need to change reference id (ex. [{formId: 'destinationReferenceFormId', compPath: 'selectWithResourceReference'}])
+   * @param {object[]} compsWithReferences - Array with components path that need to change reference id (ex. [{formId: 'destinationReferenceFormId', compPath: 'selectWithResourceReference'}])
    */
   async mapSrcSubmissionToDestSubmission(submission, compsWithReferences) {
     for (const [idx, {formId, compPath}] of compsWithReferences.entries()) {
@@ -643,15 +648,20 @@ class Cloner {
   async cloneForms(srcProject, destProject, customQuery) {
     process.stdout.write('\n');
     process.stdout.write('   - Forms:');
+    let compsWithReferences = [];
+    let compsWithEncryptedData = [];
     const query = customQuery || this.projectQuery(srcProject);
-    const compsWithReferences = [];
     await this.upsertAll('forms', query, async(srcForm, destForm) => {
       process.stdout.write('\n');
       process.stdout.write(`- Form: ${srcForm.title}`);
+      // Don't clone form if --submissions-only flag passed
+      if (this.options.submissionsOnly) {
+        this.skipCurrentUpsert = true;
+      }
 
       await eachComponentAsync(srcForm.components, async(component, path) => {
         if (component.encrypted) {
-          this.encryptedFields.push(path);
+          compsWithEncryptedData.push(path);
         }
         // Map Select with resource to the destination
         if (component.data && component.data.resource) {
@@ -660,6 +670,7 @@ class Cloner {
           if (destId === component.data.resource) {
             this.formsWithMissingDeps.push(srcForm._id);
             this.skipCurrentUpsert = true;
+            this.skipCurrentAfterHook = true;
           }
           else {
             component.data.resource = destId;
@@ -676,6 +687,7 @@ class Cloner {
           if (destId === component.form) {
             this.formsWithMissingDeps.push(srcForm._id);
             this.skipCurrentUpsert = true;
+            this.skipCurrentAfterHook = true;
           }
           else {
             component.form = destId;
@@ -703,7 +715,6 @@ class Cloner {
 
       await this.migrateFormAccess(srcForm);
     }, async(srcForm, destForm) => {
-      const decryptKey = _.get(srcProject, 'settings.secret', null);
       if (this.options.deleteSubmissions) {
         console.log(`Deleting submissions from ${destForm.title}`);
         await this.dest.submissions.deleteMany(this.itemQuery({
@@ -711,10 +722,12 @@ class Cloner {
           form: destForm._id
         }));
       }
-      await this.cloneSubmissions(srcForm, destForm, decryptKey, compsWithReferences);
+      await this.cloneSubmissions(srcForm, destForm, compsWithReferences, compsWithEncryptedData);
       await this.cloneActions(srcForm, destForm);
       await this.cloneFormRevisions(srcForm, destForm);
-      this.encryptedFields = [];
+      // After we cloned the form submissions - reset encrypted components and components with references
+      compsWithReferences = [];
+      compsWithEncryptedData = [];
     }, (srcForm) => {
       const query = {
         name: this.getCloneFieldRegExp(srcForm.name),
@@ -824,7 +837,7 @@ class Cloner {
    * Migrate the form access to use destination roles instead of source roles.
    * @param {*} item
    */
-  async migrateFormAccess(item) {
+  migrateFormAccess(item) {
     this.migrateAccess(item.access);
     this.migrateAccess(item.submissionAccess);
   }
@@ -837,16 +850,21 @@ class Cloner {
   async migrateSettings(srcProject, destProject) {
     if (
       !srcProject ||
-      !destProject ||
-      !srcProject.settings ||
+      !srcProject['settings_encrypted'] ||
       !this.options.srcDbSecret ||
       !this.options.dstDbSecret ||
-      this.createNew
+      this.options.srcDbSecret === this.options.dstDbSecret
     ) {
       return;
     }
-    const srcSettings = this.decrypt(this.options.srcDbSecret, srcProject.settings);
-    destProject.settings = this.encrypt(this.options.dstDbSecret, srcSettings);
+    const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
+    const encryptedDestSettings = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
+
+    if (decryptedSrcSettings.secret) {
+      this.projectSecret = decryptedSrcSettings.secret;
+    }
+
+    srcProject['settings_encrypted'] = encryptedDestSettings;
   }
 
   /**
@@ -855,7 +873,7 @@ class Cloner {
   async cloneProject() {
     process.stdout.write('\n');
     process.stdout.write('Fetching formio project owner.');
-    const formioProject = await this.findLast({name: this.getCloneFieldRegExp('formio')});
+    const formioProject = await this.dest.projects.findOne({name: 'formio'});
     const formioOwner = formioProject ? formioProject.owner : null;
     const query = this.projectQuery();
     await this.upsertAll('projects', query, async(srcProject, destProject) => {
@@ -864,22 +882,20 @@ class Cloner {
         process.stdout.write(`- Cloning Open Source deployment to ${this.options.dstProject}:`);
         return;
       }
+      // If there's primary project in the destination and we don't update it, don't upsert it's clone
+      if (
+        srcProject &&
+        destProject &&
+        srcProject.name === 'formio' &&
+        srcProject.name === destProject.name &&
+        this.createNewProject
+      ) {
+        this.skipCurrentUpsert = true;
+        this.skipCurrentAfterHook = true;
+        return;
+      }
       process.stdout.write('\n');
       process.stdout.write(`- Project ${srcProject.title}:`);
-
-      if (this.createNewProject && destProject) {
-        await this.cloneRoles(srcProject, destProject);
-      }
-      // Set the source and destination roles for this project.
-      this.srcRoles = await this.src.roles
-        .find({project: srcProject._id})
-        .sort({created: -1})
-        .toArray();
-      this.destRoles = destProject ? await this.dest.roles
-        .find({project: destProject._id})
-        .sort({created: -1})
-        .toArray()
-        : [];
 
       if (this.createNewProject) {
         if (srcProject.type === 'stage') {
@@ -899,8 +915,8 @@ class Cloner {
         }
 
         // Migrate the settings.
+        this.projectSecret = null;
         await this.migrateSettings(srcProject, destProject);
-        await this.migrateFormAccess(srcProject);
 
         // Keep the team access.
         if (srcProject.access) {
@@ -921,6 +937,23 @@ class Cloner {
         }
       }
     }, async(srcProject, destProject) => {
+      // Create roles in destination project
+      if (this.createNewProject) {
+        await this.cloneRoles(srcProject, destProject);
+      }
+      // Set the source and destination roles for this project.
+      this.srcRoles = await this.src.roles
+        .find({project: srcProject._id})
+        .toArray();
+      this.destRoles = await this.dest.roles
+        .find({project: destProject._id})
+        .toArray();
+      // Update destination project roles
+      if (this.createNewProject) {
+        this.migrateFormAccess(srcProject);
+        await this.dest.projects.updateOne({_id: destProject._id}, {$set: {access: srcProject.access}});
+      }
+
       // Do not include the formio project unless specifically specified.
       if (
         (srcProject && srcProject.name === 'formio') &&

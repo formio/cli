@@ -17,7 +17,13 @@ module.exports = function(program, next) {
     .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')
     .option('--dst-cert <destination_cert>', 'Allows you to provide the TLS certificate file for connections.')
-    .option('--src-db-secret', 'Source API DB_SECRET config (provide this if your project has encrypted settings of fields).')
-    .option('--dst-db-secret', 'Destination API DB_SECRET config (provide this if your project has encrypted settings of fields).')
+    .option(
+      '--src-db-secret <source_db_secret>',
+      'Source API DB_SECRET config (provide this if your project has encrypted settings of fields).'
+    )
+    .option(
+      '--dst-db-secret <destination_db_secret>',
+      'Destination API DB_SECRET config (provide this if your project has encrypted settings of fields).'
+    )
     .action((source, destination, options) => require('../src/clone')(source, destination, options));
 };
