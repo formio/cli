@@ -12,7 +12,7 @@ module.exports = function(program, next) {
     .option('-s, --src-project <project_id,...>', 'The Source project ID, or comma separated projects for multiple')
     .option('-d, --dst-project <project_id>', 'The Destination project ID')
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
-    .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning.')
+    .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning (No OSS).')
     .option('--src-ca <source_ca>', 'The TLS certificate authority for the source mongo url')
     .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')

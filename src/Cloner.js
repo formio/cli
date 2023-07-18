@@ -442,6 +442,10 @@ class Cloner {
     // If there are no source projects, then we can assume we are cloning from OSS.
     this.oss = this.options.dstProject && !(await this.src.projects.findOne({}));
 
+    if (this.oss && this.options.updateExisting) {
+      this.options.updateExisting = false;
+    }
+
     // Connect to the destination databases.
     if (this.mongoDest) {
       this.dest = await this.connectDb(this.mongoDest, 'dst');
