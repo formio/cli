@@ -171,7 +171,7 @@ class Cloner {
   }
 
   shouldUpdate(destItem, collection) {
-    return !!destItem && this.options.updateExisting && ['projects', 'forms'].includes(collection);
+    return !this.oss && !!destItem && this.options.updateExisting && ['projects', 'forms'].includes(collection);
   }
 
   async tryInsert(collection, item) {
@@ -226,7 +226,8 @@ class Cloner {
   async upsertAll(collection, query, beforeEach, afterEach, findQuery, sort) {
     if (collection === 'projects' && this.oss) {
       // If we are cloning from OSS, then the project is already established from destination.
-      await this.before(collection, beforeEach);
+      process.stdout.write('\n');
+      process.stdout.write(`- Cloning Open Source deployment to ${this.options.dstProject}:`);
       await this.after(collection, afterEach, null, await this.dest[collection].findOne(this.query({
         _id: new ObjectId(this.options.dstProject)
       })));
@@ -342,6 +343,7 @@ class Cloner {
     else {
       newQuery = this.query(newQuery);
     }
+    // If it's OSS, then project would be undefined
     // eslint-disable-next-line no-prototype-builtins
     if (newQuery.hasOwnProperty('project') && !newQuery.project) {
       delete newQuery.project;
@@ -457,7 +459,7 @@ class Cloner {
    * @param {*} srcSubmission - The source submission that contains the encrypted data.
    * @param {string} decryptKey - The source key to decrypt data (either project.settings.secret or DB_SECRET).
    */
-  async migrateDataEncryption(srcSubmission, compsWithEncryptedData) {
+  migrateDataEncryption(srcSubmission, compsWithEncryptedData) {
     if (
       !compsWithEncryptedData.length ||
       !this.options.srcDbSecret ||
@@ -499,7 +501,9 @@ class Cloner {
       if (compsWithReferences.length) {
         await this.mapSrcSubmissionToDestSubmission(submission, compsWithReferences);
       }
-      this.migrateDataEncryption(submission, compsWithEncryptedData);
+      if (compsWithEncryptedData.length) {
+        this.migrateDataEncryption(submission, compsWithEncryptedData);
+      }
       this.migrateRoles(submission.roles);
     }, async(srcSubmission, destSubmission) => {
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission);
@@ -877,11 +881,6 @@ class Cloner {
     const formioOwner = formioProject ? formioProject.owner : null;
     const query = this.projectQuery();
     await this.upsertAll('projects', query, async(srcProject, destProject) => {
-      if (!srcProject) {
-        process.stdout.write('\n');
-        process.stdout.write(`- Cloning Open Source deployment to ${this.options.dstProject}:`);
-        return;
-      }
       // If there's primary project in the destination and we don't update it, don't upsert it's clone
       if (
         srcProject &&
@@ -891,7 +890,7 @@ class Cloner {
         this.createNewProject
       ) {
         this.skipCurrentUpsert = true;
-        this.skipCurrentAfterHook = true;
+        this.skipCurrentAfterHook = !this.options.updateExisting;
         return;
       }
       process.stdout.write('\n');
@@ -943,7 +942,7 @@ class Cloner {
       }
       // Set the source and destination roles for this project.
       this.srcRoles = await this.src.roles
-        .find({project: srcProject._id})
+        .find(this.oss ? {} : {project: srcProject._id})
         .toArray();
       this.destRoles = await this.dest.roles
         .find({project: destProject._id})
@@ -954,14 +953,7 @@ class Cloner {
         await this.dest.projects.updateOne({_id: destProject._id}, {$set: {access: srcProject.access}});
       }
 
-      // Do not include the formio project unless specifically specified.
-      if (
-        (srcProject && srcProject.name === 'formio') &&
-        (this.sourceProject !== srcProject._id.toString())
-      ) {
-        return;
-      }
-      await this.cloneForms(srcProject, destProject);
+      await this.cloneForms(srcProject, destProject, this.oss ? this.query({}) : null);
       await this.cloneTags(srcProject, destProject);
       // Clone forms that had missing destination dependencies
       if (this.formsWithMissingDeps.length) {
