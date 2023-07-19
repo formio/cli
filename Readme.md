@@ -8,7 +8,7 @@ Installation
 Installation is easy... Simply type the following in your command line.
 
 ```
-npm install -g formio-cli
+npm install -g @formio/cli
 ```
 
 Commands
