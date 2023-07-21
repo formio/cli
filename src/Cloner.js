@@ -26,6 +26,8 @@ class Cloner {
    * @param {*} options.createdAfter - Clone only data created after a certain date.
    * @param {*} options.modifiedAfter - Clone only data modified after a certain date.
    * @param {*} options.deleteSubmissions - Delete the submissions of a form before cloning it.
+   * @param {*} options.includeFormRevisions - Include form revisions when cloning forms.
+   * @param {*} options.includeSubmissionRevisions - Include submission revisions when cloning submissions.
    * @param {*} options.submissionsOnly - Only clone submissions.
    * @param {*} options.updateExisting - Update project or form if it's found in destination.
    */
@@ -139,7 +141,7 @@ class Cloner {
    */
   async each(collection, query, cb, sort = {created: 1}) {
     if (!query._id && this.cloneState[collection]) {
-      query.created = {$gt: new Date(this.cloneState[collection])};
+      query.created = {$gte: new Date(this.cloneState[collection])};
     }
     const cursor = _.get(this, collection).find(query).sort(sort);
     while (await cursor.hasNext()) {
@@ -520,6 +522,9 @@ class Cloner {
    * @param {*} destSubmission - The destination submission.
    */
   async cloneSubmissionRevisions(srcSubmission, destSubmission) {
+    if (!this.options.includeSubmissionRevisions) {
+      return;
+    }
     await this.upsertAll('submissionrevisions', this.itemQuery({
       _rid: srcSubmission._id
     }), async(submission) => {
@@ -764,6 +769,9 @@ class Cloner {
   }
 
   async cloneFormRevisions(srcForm, destForm) {
+    if (!this.options.includeFormRevisions) {
+      return;
+    }
     process.stdout.write('\n');
     process.stdout.write('   - Revisions:');
     const query = this.itemQuery({
