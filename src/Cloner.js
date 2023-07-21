@@ -146,7 +146,7 @@ class Cloner {
       const doc = await cursor.next();
       // eslint-disable-next-line callback-return
       await cb(doc);
-      process.stdout.write('.');
+      process.stdout.write(collection === 'src.submissionrevisions' ? '_' : '.');
       this.cloneState[collection] = (new Date(doc.created || null)).toISOString();
     }
     delete this.cloneState[collection];
@@ -520,8 +520,6 @@ class Cloner {
    * @param {*} destSubmission - The destination submission.
    */
   async cloneSubmissionRevisions(srcSubmission, destSubmission) {
-    process.stdout.write('\n');
-    process.stdout.write('            - Submission Revisions:');
     await this.upsertAll('submissionrevisions', this.itemQuery({
       _rid: srcSubmission._id
     }), async(submission) => {
