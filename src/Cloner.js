@@ -29,7 +29,6 @@ class Cloner {
    * @param {*} options.includeFormRevisions - Include form revisions when cloning forms.
    * @param {*} options.includeSubmissionRevisions - Include submission revisions when cloning submissions.
    * @param {*} options.submissionsOnly - Only clone submissions.
-   * @param {*} options.updateExisting - Update project or form if it's found in destination.
    */
   constructor(mongoSrc, mongoDest = '', options = {}) {
     this.mongoSrc = mongoSrc;
@@ -37,11 +36,7 @@ class Cloner {
     this.beforeAll = null;
     this.afterAll = null;
     this.createNew = (mongoSrc === mongoDest);
-    this.createNewProject = !options.dstProject && !options.updateExisting;
     this.defaultSaltLength = 40;
-    this.formsWithMissingDeps = [];
-    this.skipCurrentUpsert = false;
-    this.skipCurrentAfterHook = false;
     this.options = options;
     this.src = null;
     this.dest = null;
@@ -141,7 +136,7 @@ class Cloner {
    */
   async each(collection, query, cb, sort = {created: 1}) {
     if (!query._id && this.cloneState[collection]) {
-      query.created = {$gte: new Date(this.cloneState[collection])};
+      query.created = {$gt: new Date(this.cloneState[collection])};
     }
     const cursor = _.get(this, collection).find(query).sort(sort);
     while (await cursor.hasNext()) {
@@ -154,46 +149,38 @@ class Cloner {
     delete this.cloneState[collection];
   }
 
-  async before(collection, beforeEach, srcItem, dstItem) {
+  /**
+   * Before handler for each document.
+   *
+   * @param {*} collection - The collection to run the before handler on.
+   * @param {*} beforeEach - The callback to call before each document.
+   * @param {*} src - The source document.
+   * @param {*} update - The updated document.
+   * @param {*} dest - The destination document.
+   */
+  async before(collection, beforeEach, src, update, dest) {
     if (beforeEach) {
-      await beforeEach(srcItem, dstItem);
+      await beforeEach(src, update, dest);
     }
     if (this.beforeAll) {
-      await this.beforeAll(collection, srcItem, dstItem);
+      await this.beforeAll(collection, src, update, dest);x``
     }
   }
 
-  async after(collection, afterEach, srcItem, dstItem) {
+  /**
+   * After handler for each document.
+   * @param {*} collection - The collection to run the after handler on.
+   * @param {*} afterEach - The callback to call after each document.
+   * @param {*} srcItem - The source item.
+   * @param {*} update - The updated item.
+   * @param {*} dest - The destination item.
+   */
+  async after(collection, afterEach, srcItem, update, dest) {
     if (afterEach) {
-      await afterEach(srcItem, dstItem);
+      await afterEach(srcItem, update, dest);
     }
     if (this.afterAll) {
-      await this.afterAll(collection, srcItem, dstItem);
-    }
-  }
-
-  shouldUpdate(destItem, collection) {
-    return !this.oss && !!destItem && this.options.updateExisting && ['projects', 'forms'].includes(collection);
-  }
-
-  async tryInsert(collection, item) {
-    try {
-      return (await this.dest[collection].insertOne(item)).insertedId;
-    }
-    catch (err) {
-      // If duplicate key error encountered, add '-clone' to the failing field and repeat the operation
-      if (err.code === 11000) {
-        // EX: err.keyValue = {"machineName": "failing-machine-name"}
-        Object.keys(err.keyValue).forEach((fieldKey) => {
-          // If the failed value is of string type add '-clone' to it and retry insert
-          if (typeof err.keyValue[fieldKey] === 'string') {
-            item[fieldKey] = `${err.keyValue[fieldKey]}-clone`;
-          }
-        });
-        return this.tryInsert(collection, item);
-      }
-      // If unhandled error throw to the root catch
-      throw err;
+      await this.afterAll(collection, srcItem, update, dest);
     }
   }
 
@@ -218,6 +205,38 @@ class Cloner {
   }
 
   /**
+   * Returns the destination item that should be updated.
+   *
+   * @param {*} collection - The collection to find the item in.
+   * @param {*} query - The query to use to find the item.
+   * @param {*} sort - The sort to use to find the item.
+   */
+  async destItem(collection, query, sort) {
+    if (collection === 'submissions') {
+      // Returning null here will always create a new item instead of updating an existing one.
+      return null;
+    }
+    return await this.findLast(`dest.${collection}`, query, sort);
+  }
+
+  /**
+   * Determine if we should clone the given item.
+   * @param {*} srcItem - The source item to check.
+   */
+  shouldClone(collection, srcItem) {
+    if (this.options.submissionsOnly && collection !== 'submissions') {
+      return false;
+    }
+    if (this.options.createdAfter && srcItem.created < parseInt(this.options.createdAfter, 10)) {
+      return false;
+    }
+    if (this.options.modifiedAfter && srcItem.modified < parseInt(this.options.modifiedAfter, 10)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Upsert a record in the destination database.
    * @param {*} collection - The collection to upsert to.
    * @param {*} query - The query to use to find the document in the source database.
@@ -225,16 +244,7 @@ class Cloner {
    * @param {*} afterEach - The callback to call after upserting the document.
    * @param {*} findQuery - The query to use to find the "equivalent" document in the destination database.
    */
-  async upsertAll(collection, query, beforeEach, afterEach, findQuery, sort) {
-    if (collection === 'projects' && this.oss) {
-      // If we are cloning from OSS, then the project is already established from destination.
-      process.stdout.write('\n');
-      process.stdout.write(`- Cloning Open Source deployment to ${this.options.dstProject}:`);
-      await this.after(collection, afterEach, null, await this.dest[collection].findOne(this.query({
-        _id: new ObjectId(this.options.dstProject)
-      })));
-      return;
-    }
+  async upsertAll(collection, query, eachItem, beforeEach, afterEach, findQuery, sort) {
     if (!findQuery) {
       findQuery = (current) => {
         return {_id: current._id};
@@ -243,65 +253,37 @@ class Cloner {
 
     await this.each(`src.${collection}`, query, async(current) => {
       const srcItem = _.cloneDeep(current);
+      if (eachItem) {
+        eachItem(srcItem);
+      }
 
       try {
-        // If there is destProject option passed, skip cloning srcProject
-        if (collection === 'projects' && this.options.dstProject) {
-          const destItem = await this.dest[collection].findOne(
-            this.query({_id: new ObjectId(this.options.dstProject)})
-          );
-          await this.before(collection, beforeEach, srcItem, destItem);
-          await this.after(collection, afterEach, srcItem, destItem);
-        }
-        else {
-          // Find the last item matching the query
-          const destItem = await this.findLast(`dest.${collection}`, findQuery(current), sort);
+        // Create the item we will be inserting/updating.
+        const subs = collection === 'submissions';
+        const destItem = subs ? null : await this.destItem(collection, findQuery(current), sort);
 
-          // If --update-existing option passed and there is an existing item - update it, else - insert it
-          if (this.shouldUpdate(destItem, collection)) {
-            const updatedItem = _.assign(destItem, srcItem);
+        // eslint-disable-next-line max-len
+        const updatedItem = subs ? _.omit(srcItem, ['_id']) : _.assign(destItem || {}, _.omit(srcItem, ['_id', 'settings_encrypted']));
 
-            // Update modified date
-            if (updatedItem.modified) {
-              updatedItem.modified = new Date();
-            }
-
-            await this.before(collection, beforeEach, updatedItem, destItem);
-
-            if (!this.skipCurrentUpsert) {
-              await this.dest[collection].updateOne(
-                findQuery(current),
-                {$set: _.omit(updatedItem, ['_id', 'machineName', 'settings_encrypted'])}
-              );
-            }
+        // Call before handler and then update if it says we should.
+        if (
+          this.shouldClone(collection, srcItem) &&
+          await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false
+        ) {
+          if (updatedItem._id) {
+            await this.dest[collection].updateOne(
+              findQuery(destItem),
+              {$set: _.omit(updatedItem, ['_id', 'machineName'])}
+            );
           }
           else {
-            await this.before(collection, beforeEach, current, destItem);
-
-            if (!this.skipCurrentUpsert) {
-              delete current._id;
-
-              // Update created and modified dates
-              if (current.created && current.modified) {
-                current.created = new Date();
-                current.modified = new Date();
-              }
-
-              current._id = await this.tryInsert(collection, current);
-            }
-          }
-          // If we skipped current upsert, just reset the flag, otherwise - call after hook with upserted item
-          if (this.skipCurrentUpsert) {
-            this.skipCurrentUpsert = false;
-          }
-
-          if (this.skipCurrentAfterHook) {
-            this.skipCurrentAfterHook = false;
-          }
-          else {
-            await this.after(collection, afterEach, srcItem, await this.dest[collection].findOne(findQuery(current)));
+            updatedItem._id = srcItem._id;
+            await this.dest[collection].insertOne(updatedItem);
           }
         }
+
+        // Call the after handler.
+        await this.after(collection, afterEach, srcItem, updatedItem, destItem);
       }
       catch (err) {
         console.error(`Error creating ${collection} ${current._id}`, err);
@@ -320,6 +302,13 @@ class Cloner {
       newQuery.deleted = {$eq: null};
     }
     return newQuery;
+  }
+
+  /**
+   * Get the destination project id.
+   */
+  get destProject() {
+    return this.options.dstProject || this.options.project;
   }
 
   /**
@@ -350,11 +339,22 @@ class Cloner {
     if (newQuery.hasOwnProperty('project') && !newQuery.project) {
       delete newQuery.project;
     }
-    if (this.options.createdAfter) {
-      newQuery.created = {$gt: new Date(parseInt(this.options.createdAfter, 10))};
+    return newQuery;
+  }
+
+  /**
+   * Adding a query for created and modified dates.
+   * @param {*} query - The default query to decorate.
+   */
+  afterQuery(query, createdAfter, modifiedAfter) {
+    const newQuery = this.itemQuery(query);
+    createdAfter = createdAfter || this.options.createdAfter;
+    modifiedAfter = modifiedAfter || this.options.modifiedAfter;
+    if (createdAfter) {
+      newQuery.created = {$gt: new Date(parseInt(createdAfter, 10))};
     }
-    if (this.options.modifiedAfter) {
-      newQuery.modified = {$gt: new Date(parseInt(this.options.modifiedAfter, 10))};
+    if (modifiedAfter) {
+      newQuery.modified = {$gt: new Date(parseInt(modifiedAfter, 10))};
     }
     return newQuery;
   }
@@ -438,15 +438,15 @@ class Cloner {
   }
 
   async connect() {
+    if (this.mongoSrc === this.mongoDest) {
+      throw new Error('Source and destination databases cannot be the same.');
+    }
+
     // Connect to the source databases.
     this.src = await this.connectDb(this.mongoSrc, 'src');
 
     // If there are no source projects, then we can assume we are cloning from OSS.
-    this.oss = this.options.dstProject && !(await this.src.projects.findOne({}));
-
-    if (this.oss && this.options.updateExisting) {
-      this.options.updateExisting = false;
-    }
+    this.oss = !(await this.src.projects.findOne({}));
 
     // Connect to the destination databases.
     if (this.mongoDest) {
@@ -462,26 +462,26 @@ class Cloner {
 
   /**
    * Migrate the data encrypted within a submission to a new secret.
-   * @param {*} srcSubmission - The source submission that contains the encrypted data.
+   * @param {*} src - The source record
+   * @param {*} update - The updated record
    * @param {string} decryptKey - The source key to decrypt data (either project.settings.secret or DB_SECRET).
    */
-  migrateDataEncryption(srcSubmission, compsWithEncryptedData) {
+  migrateDataEncryption(src, update, compsWithEncryptedData) {
+    const srcSecret = this.srcSecret || this.options.srcDbSecret;
+    const destSecret = this.destSecret || this.options.dstDbSecret;
     if (
       !compsWithEncryptedData.length ||
-      !this.options.srcDbSecret ||
-      !this.options.dstDbSecret ||
-      this.options.srcDbSecret === this.options.dstDbSecret
+      !srcSecret ||
+      !destSecret ||
+      srcSecret === destSecret
     ) {
       return;
     }
     compsWithEncryptedData.forEach((compPath) => {
-      if (_.get(srcSubmission, `data.${compPath}`, false)) {
-        const decryptedValue = this.decrypt(
-          this.projectSecret || this.options.srcDbSecret, _.get(srcSubmission, `data.${compPath}`)
+      if (_.get(src, `data.${compPath}`, false)) {
+        _.set(update, `data.${compPath}`,
+          this.encrypt(destSecret, this.decrypt(srcSecret, _.get(src, `data.${compPath}`)))
         );
-        _.set(srcSubmission, `data.${compPath}`, this.encrypt(
-          this.projectSecret || this.options.dstDbSecret, decryptedValue
-        ));
       }
     });
   }
@@ -490,29 +490,34 @@ class Cloner {
    * Clone submissions from one form to another.
    * @param {*} srcForm - The source form from the database.
    * @param {*} destForm - The destination from from the database.
-   * @param {object[]} compsWithReferences - Array with components path that need to change reference id.
    * @param {string[]} compsWithEncryptedData - Array with paths of components that are encrypted.
    */
-  async cloneSubmissions(srcForm, destForm, compsWithReferences, compsWithEncryptedData) {
+  async cloneSubmissions(srcForm, destForm, compsWithEncryptedData) {
     process.stdout.write('\n');
     process.stdout.write('         - Submissions:');
-    this.prevSubCreated = null;
-    const query = this.itemQuery({
+
+    // Determine the last one cloned, and ensure that we only fetch submissions after that date.
+    const lastSubmission = await this.findLast('dest.submissions', {
+      form: destForm._id,
+      project: destForm.project
+    });
+
+    // Submissions always "create new" so we need to ensure we only clone the ones that have not yet been cloned.
+    const query = this.afterQuery({
       form: srcForm._id,
       project: srcForm.project
-    });
-    await this.upsertAll('submissions', query, async(submission) => {
-      submission.form = destForm._id;
-      submission.project = destForm.project;
-      if (compsWithReferences.length) {
-        await this.mapSrcSubmissionToDestSubmission(submission, compsWithReferences);
-      }
+    }, lastSubmission && lastSubmission.created ? lastSubmission.created.getTime() : null);
+
+    // Clone the submissions.
+    await this.upsertAll('submissions', query, null, async(src, update) => {
+      update.form = destForm._id;
+      update.project = destForm.project;
       if (compsWithEncryptedData.length) {
-        this.migrateDataEncryption(submission, compsWithEncryptedData);
+        this.migrateDataEncryption(src, update, compsWithEncryptedData);
       }
-      this.migrateRoles(submission.roles);
+      this.migrateRoles(update.roles);
     }, async(srcSubmission, destSubmission) => {
-      await this.cloneSubmissionRevisions(srcSubmission, destSubmission);
+      await this.cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData);
     });
   }
 
@@ -521,15 +526,15 @@ class Cloner {
    * @param {*} srcSubmission - The source submission.
    * @param {*} destSubmission - The destination submission.
    */
-  async cloneSubmissionRevisions(srcSubmission, destSubmission) {
+  async cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData) {
     if (!this.options.includeSubmissionRevisions) {
       return;
     }
-    await this.upsertAll('submissionrevisions', this.itemQuery({
+    await this.upsertAll('submissionrevisions', this.afterQuery({
       _rid: srcSubmission._id
-    }), async(submission) => {
-      submission._rid = destSubmission._id;
-      this.migrateDataEncryption(submission);
+    }), null, async(src, update) => {
+      update._rid = destSubmission._id;
+      this.migrateDataEncryption(src, update, compsWithEncryptedData);
     });
   }
 
@@ -595,27 +600,24 @@ class Cloner {
     process.stdout.write('         - Actions:');
     await this.upsertAll('actions', this.itemQuery({
       form: srcForm._id
-    }), async(action) => {
-      action.form = destForm._id;
-
-      // See if we need to update the resources.
-      if (action.settings && action.settings.resources) {
-        for (let i = 0; i < action.settings.resources.length; i++) {
-          const srcId = action.settings.resources[i];
-          action.settings.resources[i] = await this.getDestinationResourceId(srcId, destForm.project);
+    }), null, async(src, update) => {
+      update.form = destForm._id;
+      if (!update.settings) {
+        return;
+      }
+      if (update.settings.resources) {
+        for (let i = 0; i < update.settings.resources.length; i++) {
+          const srcId = update.settings.resources[i];
+          update.settings.resources[i] = await this.getDestinationResourceId(srcId, destForm.project);
         }
       }
-
-      // See if we need to update the resource.
-      if (action.settings && action.settings.resource) {
-        const srcId = action.settings.resource;
-        action.settings.resource = await this.getDestinationResourceId(srcId, destForm.project);
+      if (update.settings.resource) {
+        const srcId = update.settings.resource;
+        update.settings.resource = await this.getDestinationResourceId(srcId, destForm.project);
       }
-
-      // See if we need to update the role.
-      if (action.settings && action.settings.role) {
-        const srcId = action.settings.role;
-        action.settings.role = await this.getDestinationRoleId(srcId, destForm.project);
+      if (update.settings.role) {
+        const srcId = update.settings.role;
+        update.settings.role = await this.getDestinationRoleId(srcId, destForm.project);
       }
     });
   }
@@ -629,28 +631,6 @@ class Cloner {
   }
 
   /**
-   * Map source submission with references to the destination submission with references
-   * @param {object} submission - Source submission with assigned destination form and project ids
-   * @param {object[]} compsWithReferences - Array with components path that need to change reference id (ex. [{formId: 'destinationReferenceFormId', compPath: 'selectWithResourceReference'}])
-   */
-  async mapSrcSubmissionToDestSubmission(submission, compsWithReferences) {
-    for (const [idx, {formId, compPath}] of compsWithReferences.entries()) {
-      const destSub = await this.getDestinationSubmissionByDate(
-        formId,
-        submission.project,
-        this.prevSubCreated || submission.created
-      );
-
-      if (destSub) {
-        _.set(submission, `data.${compPath}`, {_id: destSub._id});
-        if (idx === compsWithReferences.length - 1) {
-          this.prevSubCreated = destSub.created;
-        }
-      }
-    }
-  }
-
-  /**
    * Clone forms from one project to another.
    * @param {*} srcProject - The source project.
    * @param {*} destProject - The destination project.
@@ -659,72 +639,25 @@ class Cloner {
   async cloneForms(srcProject, destProject, customQuery) {
     process.stdout.write('\n');
     process.stdout.write('   - Forms:');
-    let compsWithReferences = [];
     let compsWithEncryptedData = [];
     const query = customQuery || this.projectQuery(srcProject);
-    await this.upsertAll('forms', query, async(srcForm, destForm) => {
+    await this.upsertAll('forms', query, (form) => {
       process.stdout.write('\n');
-      process.stdout.write(`- Form: ${srcForm.title}`);
-      // Don't clone form if --submissions-only flag passed
+      process.stdout.write(`- Form: ${form.title}`);
+    }, async(src, update, dest) => {
       if (this.options.submissionsOnly) {
-        this.skipCurrentUpsert = true;
+        return false;
       }
 
-      await eachComponentAsync(srcForm.components, async(component, path) => {
+      await eachComponentAsync(update.components, async(component, path) => {
         if (component.encrypted) {
           compsWithEncryptedData.push(path);
         }
-        // Map Select with resource to the destination
-        if (component.data && component.data.resource) {
-          const destId = await this.getDestinationResourceId(component.data.resource, destProject._id);
-
-          if (destId === component.data.resource) {
-            this.formsWithMissingDeps.push(srcForm._id);
-            this.skipCurrentUpsert = true;
-            this.skipCurrentAfterHook = true;
-          }
-          else {
-            component.data.resource = destId;
-            // If resource form submissions are getting by reference
-            if (component.reference) {
-              compsWithReferences.push({formId: destId, compPath: path});
-            }
-          }
-        }
-        // Map Nested form to the destination
-        if (component.type === 'form' && component.form) {
-          const destId = await this.getDestinationResourceId(component.form, destProject._id);
-          // If destination form is not yet cloned, store it's id to clone after all forms
-          if (destId === component.form) {
-            this.formsWithMissingDeps.push(srcForm._id);
-            this.skipCurrentUpsert = true;
-            this.skipCurrentAfterHook = true;
-          }
-          else {
-            component.form = destId;
-            // If nested form submissions are getting by reference
-            if (component.reference !== false) {
-              compsWithReferences.push({formId: destId, compPath: path});
-            }
-          }
-        }
       });
 
-      if (this.skipCurrentUpsert) {
-        return;
-      }
-
-      this.setCollection(srcForm, srcProject, destProject);
-
-      if (destForm && !this.options.updateExisting) {
-        srcForm.title = `${destForm.title} (Clone)`;
-        srcForm.name = `${destForm.name}-clone`;
-        srcForm.path = `${destForm.path}-clone`;
-      }
-
-      srcForm.project = destProject._id;
-
-      await this.migrateFormAccess(srcForm);
+      this.setCollection(update, srcProject, destProject);
+      update.project = destProject._id;
+      await this.migrateFormAccess(update);
     }, async(srcForm, destForm) => {
       if (this.options.deleteSubmissions) {
         console.log(`Deleting submissions from ${destForm.title}`);
@@ -733,11 +666,9 @@ class Cloner {
           form: destForm._id
         }));
       }
-      await this.cloneSubmissions(srcForm, destForm, compsWithReferences, compsWithEncryptedData);
+      await this.cloneSubmissions(srcForm, destForm, compsWithEncryptedData);
       await this.cloneActions(srcForm, destForm);
       await this.cloneFormRevisions(srcForm, destForm);
-      // After we cloned the form submissions - reset encrypted components and components with references
-      compsWithReferences = [];
       compsWithEncryptedData = [];
     }, (srcForm) => {
       const query = {
@@ -747,24 +678,30 @@ class Cloner {
         query.project = destProject._id;
       }
       return query;
-    },
-    // Clone resources first
-    {type: -1});
+    }, null, (current) => {
+      return {
+        name: current.name
+      };
+    });
   }
 
   async cloneRoles(srcProject, destProject) {
     process.stdout.write('\n');
     process.stdout.write('   - Roles:');
-    await this.upsertAll('roles', this.projectQuery(srcProject), (role) => {
-      role.project = destProject._id;
+    await this.upsertAll('roles', this.projectQuery(srcProject), null, (src, update) => {
+      update.project = destProject._id;
+    }, null, (current) => {
+      return {
+        title: current.title
+      };
     });
   }
 
   async cloneTags(srcProject, destProject) {
     process.stdout.write('\n');
     process.stdout.write('   - Tags:');
-    await this.upsertAll('tags', this.projectQuery(srcProject), (tag) => {
-      tag.project = destProject._id;
+    await this.upsertAll('tags', this.projectQuery(srcProject), null, (src, update) => {
+      update.project = destProject._id;
     });
   }
 
@@ -774,18 +711,17 @@ class Cloner {
     }
     process.stdout.write('\n');
     process.stdout.write('   - Revisions:');
-    const query = this.itemQuery({
+    const query = this.afterQuery({
       _rid: srcForm._id,
       project: srcForm.project
     });
-    await this.upsertAll('formrevisions', query, (srcRevision, dstRevision) => {
+    await this.upsertAll('formrevisions', query, null, (src, update, dest) => {
       // If the revision already exists in the destination, don't upsert it
-      if (dstRevision) {
-        this.skipCurrentUpsert = true;
-        return;
+      if (dest) {
+        return false;
       }
-      srcRevision._rid = destForm._id;
-      srcRevision.project = destForm.project;
+      update._rid = destForm._id;
+      update.project = destForm.project;
     }, null, (current) => {
       return {
         project: destForm.project,
@@ -797,23 +733,31 @@ class Cloner {
 
   async cloneAllSubmissions() {
     process.stdout.write('\n');
-    process.stdout.write(`Cloning submissions from ${this.sourceProject} to ${this.options.dstProject}.`);
+    process.stdout.write(`Cloning forms and submissions of ${this.sourceProject} to ${this.destProject}.`);
     process.stdout.write('\n');
-    if (!this.options.dstProject) {
+    if (!this.destProject) {
       return console.log('You must provide a destination project. --dst-project=<project_id>');
-    }
-
-    if (!this.sourceProject) {
-      return console.log('You must provide a source project. --src-project=<project_id>');
     }
 
     // Load the source project.
     const srcProject = await this.src.projects.findOne({_id: new ObjectId(this.sourceProject)});
-
-    // Load the destination project.
-    const destProject = await this.dest.projects.findOne({_id: new ObjectId(this.options.dstProject)});
-
+    const destProject = await this.dest.projects.findOne({_id: new ObjectId(this.destProject)});
+    this.srcRoles = await this.src.roles.find(srcProject ? {project: srcProject._id} : {}).toArray();
+    this.destRoles = await this.dest.roles.find({project: destProject._id}).toArray();
     await this.cloneForms(srcProject, destProject);
+  }
+
+  destRole(roleId) {
+    const srcRole = this.srcRoles.find((role) => role._id.toString() === roleId.toString());
+    if (!srcRole) {
+      return;
+    }
+    const roleTitle = srcRole.title;
+    const dstRole = this.destRoles.find((role) => role.title === roleTitle);
+    if (!dstRole || !dstRole._id) {
+      return;
+    }
+    return new ObjectId(dstRole._id.toString());
   }
 
   /**
@@ -823,16 +767,7 @@ class Cloner {
   migrateRoles(roles) {
     if (roles && roles.length) {
       roles.forEach((roleId, roleIndex) => {
-        const srcRole = this.srcRoles.find((role) => role._id.toString() === roleId.toString());
-        if (!srcRole) {
-          return;
-        }
-        const roleTitle = srcRole.title;
-        const dstRole = this.destRoles.find((role) => role.title === roleTitle);
-        if (!dstRole || !dstRole._id) {
-          return;
-        }
-        roles[roleIndex] = new ObjectId(dstRole._id.toString());
+        roles[roleIndex] = this.destRole(roleId);
       });
     }
   }
@@ -842,9 +777,16 @@ class Cloner {
    * @param {*} access - An access array.
    */
   migrateAccess(access) {
+    const newAccess = [];
     if (access && access.length) {
-      access.forEach((roleAccess) => this.migrateRoles(roleAccess.roles));
+      access.forEach((roleAccess) => {
+        if (!roleAccess.type || roleAccess.type.indexOf('team_') === -1) {
+          this.migrateRoles(roleAccess.roles);
+          newAccess.push(roleAccess);
+        }
+      });
     }
+    return newAccess;
   }
 
   /**
@@ -861,24 +803,34 @@ class Cloner {
    * @param {*} srcProject - The source project.
    * @param {*} destProject - The destination project.
    */
-  async migrateSettings(srcProject, destProject) {
+  async migrateSettings(src, update, dest) {
     if (
-      !srcProject ||
-      !srcProject['settings_encrypted'] ||
+      !src ||
+      !src['settings_encrypted'] ||
       !this.options.srcDbSecret ||
       !this.options.dstDbSecret ||
       this.options.srcDbSecret === this.options.dstDbSecret
     ) {
       return;
     }
-    const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
-    const encryptedDestSettings = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
-
-    if (decryptedSrcSettings.secret) {
-      this.projectSecret = decryptedSrcSettings.secret;
+    const decryptedDstSettings = dest ? this.decrypt(this.options.dstDbSecret, dest['settings_encrypted'], true) : {};
+    if (decryptedDstSettings.secret) {
+      this.dstSecret = decryptedDstSettings.secret;
     }
 
-    srcProject['settings_encrypted'] = encryptedDestSettings;
+    // Do not overwrite existing destination project settings.
+    if (dest && dest['settings_encrypted']) {
+      update['settings_encrypted'] = dest['settings_encrypted'];
+      return;
+    }
+
+    // Decrypt the source, and set the update to the re-encrypted settings object.
+    const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, src['settings_encrypted'], true);
+    if (decryptedSrcSettings.secret) {
+      this.srcSecret = decryptedSrcSettings.secret;
+    }
+
+    update['settings_encrypted'] = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
   }
 
   /**
@@ -890,89 +842,57 @@ class Cloner {
     const formioProject = await this.dest.projects.findOne({name: 'formio'});
     const formioOwner = formioProject ? formioProject.owner : null;
     const query = this.projectQuery();
-    await this.upsertAll('projects', query, async(srcProject, destProject) => {
-      // If there's primary project in the destination and we don't update it, don't upsert it's clone
-      if (
-        srcProject &&
-        destProject &&
-        srcProject.name === 'formio' &&
-        srcProject.name === destProject.name &&
-        this.createNewProject
-      ) {
-        this.skipCurrentUpsert = true;
-        this.skipCurrentAfterHook = !this.options.updateExisting;
-        return;
+    await this.upsertAll('projects', query, (project) => {
+      if (project.name === 'formio') {
+        return false;
       }
       process.stdout.write('\n');
-      process.stdout.write(`- Project ${srcProject.title}:`);
-
-      if (this.createNewProject) {
-        if (srcProject.type === 'stage') {
-          // If the user tries to create clone of a project from stage
-          process.stdout.write('\n');
-          process.stdout.write('Creating a clone of a project from stage is not allowed.');
-          process.exit();
-        }
-
-        if (destProject) {
-          srcProject.title = `${destProject.title} (Clone)`;
-          srcProject.name = `${destProject.name}-clone`;
-        }
-
-        if (formioOwner) {
-          srcProject.owner = formioOwner;
-        }
-
-        // Migrate the settings.
-        this.projectSecret = null;
-        await this.migrateSettings(srcProject, destProject);
-
-        // Keep the team access.
-        if (srcProject.access) {
-          let newAccess = [];
-          srcProject.access.forEach((access) => {
-            if (access.type.indexOf('team_') === -1) {
-              newAccess.push(access);
-            }
-          });
-          if (destProject) {
-            destProject.access.forEach((access) => {
-              if (access.type.indexOf('team_') === 0) {
-                newAccess.push(access);
-              }
-            });
-          }
-          srcProject.access = newAccess;
-        }
+      process.stdout.write(`- Project ${project.title}:`);
+    }, async(src, update, dest) => {
+      // Do not update if they provide a destination project or we are the "formio" project.
+      if (src.name === 'formio' || this.options.dstProject) {
+        return false;
       }
+
+      if (src.type === 'stage') {
+        // If the user tries to create clone of a project from stage
+        process.stdout.write('\n');
+        process.stdout.write('Creating a clone of a project from stage is not allowed.');
+        process.exit();
+      }
+
+      if (formioOwner) {
+        update.owner = formioOwner;
+      }
+
+      // Migrate the settings.
+      this.srcSecret = null;
+      this.dstSecret = null;
+      await this.migrateSettings(src, update, dest);
+
+      // Keep the access settings.
+      update.access = dest ? dest.access : [];
     }, async(srcProject, destProject) => {
+      if (srcProject.name === 'formio') {
+        return;
+      }
+
       // Create roles in destination project
-      if (this.createNewProject) {
+      if (!this.options.dstProject) {
         await this.cloneRoles(srcProject, destProject);
       }
       // Set the source and destination roles for this project.
-      this.srcRoles = await this.src.roles
-        .find(this.oss ? {} : {project: srcProject._id})
-        .toArray();
-      this.destRoles = await this.dest.roles
-        .find({project: destProject._id})
-        .toArray();
+      this.srcRoles = await this.src.roles.find({project: srcProject._id}).toArray();
+      this.destRoles = await this.dest.roles.find({project: destProject._id}).toArray();
+
       // Update destination project roles
-      if (this.createNewProject) {
+      if (!this.options.dstProject) {
         this.migrateFormAccess(srcProject);
         await this.dest.projects.updateOne({_id: destProject._id}, {$set: {access: srcProject.access}});
       }
 
-      await this.cloneForms(srcProject, destProject, this.oss ? this.query({}) : null);
+      await this.cloneForms(srcProject, destProject);
       await this.cloneTags(srcProject, destProject);
-      // Clone forms that had missing destination dependencies
-      if (this.formsWithMissingDeps.length) {
-        const missingFormsQuery = _.assign(this.projectQuery(srcProject), {
-          _id: {$in: this.formsWithMissingDeps}
-        });
-        await this.cloneForms(srcProject, destProject, missingFormsQuery);
-        this.formsWithMissingDeps = [];
-      }
     }, (srcProject) => {
       return {
         name: this.getCloneFieldRegExp(srcProject.name)
@@ -991,12 +911,10 @@ class Cloner {
     await this.connect();
 
     // If they wish to only clone submissions, then do that.
-    if (this.options.submissionsOnly) {
-      // Clone only the submissions.
+    if (this.options.submissionsOnly || this.oss) {
       await this.cloneAllSubmissions();
     }
     else {
-      // Clone the entire project.
       await this.cloneProject();
     }
     try {

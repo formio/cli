@@ -1,10 +1,11 @@
+/* eslint-disable max-len */
 'use strict';
 module.exports = function(program, next) {
   program
     .command('clone <source> <destination>')
     .description('Clone a database (project) from one place to another.')
-    .option('--deleted-after [timestamp]', 'Only clone items deleted after the provided UNIX timestamp.')
-    .option('--created-after [timestamp]', 'Only clone items created after the provided UNIX timestamp.')
+    .option('--deleted-after [timestamp]', 'Only clone items deleted after the provided UNIX timestamp (in milliseconds).')
+    .option('--created-after [timestamp]', 'Only clone items created after the provided UNIX timestamp (in milliseconds).')
     .option('--modified-after [timestamp]', 'Only clone items modified after the provided UNIX timestamp.')
     .option('-a, --all', 'Include All items (including deleted items', false)
     .option('-o, --submissions-only', 'Only clone the submissions within a project', false)
@@ -15,6 +16,7 @@ module.exports = function(program, next) {
     .option('-d, --dst-project <project_id>', 'The Destination project ID')
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
     .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning (No OSS).', true)
+    .option('--update-existing-submissions', 'Update existing Submissions when found in the destination (slows down the clone process if set).', false)
     .option('--src-ca <source_ca>', 'The TLS certificate authority for the source mongo url')
     .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')
