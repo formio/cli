@@ -631,6 +631,7 @@ class Cloner {
       update.project = destProject._id;
     }, null, (current) => {
       return {
+        project: destProject._id,
         title: current.title
       };
     });
