@@ -830,7 +830,7 @@ class Cloner {
     await this.connect();
 
     // If they wish to only clone submissions, then do that.
-    if (this.options.destProject || this.options.submissionsOnly || this.oss) {
+    if (this.options.dstProject || this.options.submissionsOnly || this.oss) {
       process.stdout.write('\n');
       process.stdout.write(`Cloning forms and submissions of ${this.sourceProject} to ${this.destProject}.`);
       process.stdout.write('\n');
