@@ -838,8 +838,8 @@ class Cloner {
         throw new Error('You must provide a destination project id.');
       }
       await this.cloneProjectItems(
-        await this.src.projects.findOne(this.projectQuery({_id: new ObjectId(this.sourceProject)})),
-        await this.dest.projects.findOne(this.projectQuery({_id: new ObjectId(this.destProject)}))
+        await this.src.projects.findOne(this.itemQuery({_id: new ObjectId(this.sourceProject)})),
+        await this.dest.projects.findOne(this.itemQuery({_id: new ObjectId(this.destProject)}))
       );
     }
     else {
