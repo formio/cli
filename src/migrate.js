@@ -30,7 +30,7 @@ module.exports = function(options, next) {
     if (options) {
       headers[type] = {};
       if (options.key) {
-        headers[type]['x-token'] = options.key
+        headers[type]['x-token'] = options.key;
       }
       else if (options.adminKey) {
         headers[type]['x-admin-key'] = options.adminKey;
@@ -295,7 +295,7 @@ module.exports = function(options, next) {
 
       fetch(options.srcOptions)({
         url: _src
-      }).then(({ body }) => {
+      }).then(({body}) => {
         const dstProject = _dest.replace(`/${body.path}`, '');
         request({
           json: true,
@@ -306,6 +306,7 @@ module.exports = function(options, next) {
             title: body.title,
             path: body.path,
             name: body.name,
+            type: body.type,
             components: body.components
           }
         }, (err, resp) => {
