@@ -608,7 +608,7 @@ class Cloner {
 
       this.setCollection(update, srcProject, destProject);
       update.project = destProject._id;
-      this.migrateFormAccess(update);
+      this.migrateFormAccess(src, update);
     }, async(srcForm, destForm) => {
       if (this.options.deleteSubmissions) {
         console.log(`Deleting submissions from ${destForm.title}`);
