@@ -253,7 +253,7 @@ class Cloner {
       try {
         // Create the item we will be inserting/updating.
         const destItem = await this.findLast(`dest.${collection}`, this.findQuery(current, find));
-        const updatedItem = _.assign(destItem || {}, _.omit(srcItem, ['_id']));
+        const updatedItem = {...destItem, ...(_.omit(srcItem, ['_id']))};
 
         // Call before handler and then update if it says we should.
         if (
