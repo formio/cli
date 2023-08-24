@@ -164,7 +164,7 @@ class Cloner {
       await beforeEach(src, update, dest);
     }
     if (this.beforeAll) {
-      await this.beforeAll(collection, src, update, dest);x``
+      await this.beforeAll(collection, src, update, dest);
     }
   }
 
