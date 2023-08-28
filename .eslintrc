@@ -6,7 +6,7 @@
     "es6": true
   },
   "parserOptions": {
-    "ecmaVersion": 8
+    "ecmaVersion": 9
   },
   "rules": {
     "curly": [2, "all"],
