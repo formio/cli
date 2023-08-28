@@ -740,16 +740,16 @@ class Cloner {
       this.dstSecret = decryptedDstSettings.secret;
     }
 
-    // Do not overwrite existing destination project settings.
-    if (dest && dest['settings_encrypted']) {
-      update['settings_encrypted'] = dest['settings_encrypted'];
-      return;
-    }
-
     // Decrypt the source, and set the update to the re-encrypted settings object.
     const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, src['settings_encrypted'], true);
     if (decryptedSrcSettings.secret) {
       this.srcSecret = decryptedSrcSettings.secret;
+    }
+
+    // Do not overwrite existing destination project settings.
+    if (dest && dest['settings_encrypted']) {
+      update['settings_encrypted'] = dest['settings_encrypted'];
+      return;
     }
 
     update['settings_encrypted'] = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
