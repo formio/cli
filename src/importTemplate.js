@@ -1,7 +1,7 @@
 'use strict';
 
 const _ = require('lodash');
-const fetch = require("./fetch");
+const fetch = require('./fetch');
 
 module.exports = function(options, next) {
   const fetchWithHeaders = fetch(options);
@@ -16,17 +16,17 @@ module.exports = function(options, next) {
     const project = res.body;
 
     _.assign(project, {
-      template: _.omit(template, 'title', 'description', 'name'),
+      template: _.omit(template, 'title', 'description', 'name', 'machineName'),
       settings: template.settings
     });
 
     fetchWithHeaders({
-      url: `${options.server}/project/${project._id}`,
-      method: 'PUT',
-      body: project
+      url: `${options.server}/${project.name}/import`,
+      method: 'POST',
+      body: {template: project.template}
     }).then(() => {
       console.log('Project Updated');
-      next()
+      next();
     }).catch(next);
   }).catch((err) => {
     if (err.message.includes('500')) {
