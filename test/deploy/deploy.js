@@ -1,13 +1,11 @@
-/* eslint-disable no-prototype-builtins */
-/* eslint-disable max-len */
-/* globals describe, it, before, after */
+/* globals describe, it */
 'use strict';
 
 var request = require('supertest');
 const assert = require('assert');
 const deploy = require('../../src/deploy');
 
-require('dotenv').config();
+// require('dotenv').config();
 
 module.exports = (template) => {
   const options = {};
@@ -39,7 +37,7 @@ module.exports = (template) => {
       options.srcAdminKey ='dockerAdminKey';
       options.dstAdminKey ='dockerAdminKey';
 
-      request(template.appScr)
+      request(template.appSrc)
         .get('/project/'+ template.src.project._id +'/form?limit=9999999')
         .set('x-admin-key', process.env.ADMIN_KEY)
         .expect(200)
@@ -99,7 +97,7 @@ module.exports = (template) => {
       options.srcAdminKey ='dockerAdminKey';
       options.dstAdminKey ='dockerAdminKey';
 
-      request(template.appScr)
+      request(template.appSrc)
         .put('/project/'+ template.src.project._id)
         .set('x-admin-key', process.env.ADMIN_KEY)
         .send({plan: 'basic'})

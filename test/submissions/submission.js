@@ -1,10 +1,7 @@
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe, it */
 'use strict';
 const assert = require('assert');
 const submission = require('../../src/submissions');
-require('dotenv').config();
 
 module.exports = (template) => {
   describe('Submission Command', function() {

@@ -6,3 +6,5 @@ node_modules
 .DS_Store
 .vscode/launch.json
 npm-debug.log
+test/docker/data
+test/docker/.env

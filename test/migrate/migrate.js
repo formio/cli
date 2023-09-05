@@ -1,14 +1,10 @@
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe, it */
 'use strict';
 
-var request = require('supertest');
+const request = require('supertest');
 const migrate = require('../../src/migrate');
 const assert = require('assert');
-let async = require('async');
-
-require('dotenv').config();
+const async = require('async');
 
 module.exports = (template) => {
   const options = {};
@@ -125,7 +121,7 @@ module.exports = (template) => {
 
       migrate(options, (err) => {
         if (!err) {
-          request(template.appScr)
+          request(template.appSrc)
             .get('/project/'+ template.src.project._id +'/form/'+ template.src.forms.textForm2._id + '/submission')
             .set('x-admin-key', process.env.ADMIN_KEY)
             .expect(200)

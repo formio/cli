@@ -3,10 +3,9 @@
 /* eslint-disable no-prototype-builtins */
 /* globals describe, it, before, after */
 'use strict';
-var request = require('supertest');
-var formioProject = require('./fixtures/default.json');
-require('dotenv').config();
-var async = require('async');
+const request = require('supertest');
+const formioProject = require('./fixtures/default.json');
+const async = require('async');
 const {textFormFirstSrc, textFormFirstDst, submissionFirst, submissionSecond, textFormSecondSrc, submissionThird, textFormThirdSrc, textFormFirstDst2, textFormFirstDst3, textFormResource, textFormSrcResource, textFormDstResource, formCopyChainSrc, formCopyChainDst, formDeployCheck} = require('./fixtures/fix');
 
 module.exports = (template) => {
@@ -19,7 +18,7 @@ module.exports = (template) => {
         template: formioProject
       };
 
-      const projectSrc = await request(template.appScr)
+      const projectSrc = await request(template.appSrc)
         .post('/project')
         .set('x-admin-key', process.env.ADMIN_KEY)
         .send(formioSettings)
@@ -92,7 +91,7 @@ module.exports = (template) => {
           });
       };
 
-      request(template.appScr)
+      request(template.appSrc)
         .get('/project/'+ template.src.project._id +'/form?limit=9999999')
         .set('x-admin-key', process.env.ADMIN_KEY)
         .expect(200)
@@ -102,16 +101,16 @@ module.exports = (template) => {
             return done(err);
           }
           async.series([
-            createForm(template.appScr, 'src', textFormFirstSrc),
-            createFormSubmission(template.appScr, 'textForm1', submissionFirst ),
-            createFormSubmission(template.appScr, 'textForm1', submissionSecond ),
-            createForm(template.appScr, 'src', textFormSecondSrc),
-            createFormSubmission(template.appScr, 'textForm2', submissionThird ),
-            createForm(template.appScr, 'src', textFormThirdSrc),
-            createFormSubmission(template.appScr,  'textForm3', submissionThird ),
-            createForm(template.appScr, 'src', textFormSrcResource),
-            createForm(template.appScr, 'src', formCopyChainSrc),
-            createForm(template.appScr, 'src', formDeployCheck),
+            createForm(template.appSrc, 'src', textFormFirstSrc),
+            createFormSubmission(template.appSrc, 'textForm1', submissionFirst ),
+            createFormSubmission(template.appSrc, 'textForm1', submissionSecond ),
+            createForm(template.appSrc, 'src', textFormSecondSrc),
+            createFormSubmission(template.appSrc, 'textForm2', submissionThird ),
+            createForm(template.appSrc, 'src', textFormThirdSrc),
+            createFormSubmission(template.appSrc,  'textForm3', submissionThird ),
+            createForm(template.appSrc, 'src', textFormSrcResource),
+            createForm(template.appSrc, 'src', formCopyChainSrc),
+            createForm(template.appSrc, 'src', formDeployCheck),
 
           ], function(err) {
             if (err) {
