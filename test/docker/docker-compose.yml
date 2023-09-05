@@ -1,0 +1,38 @@
+version: "3.8"
+services:
+  mongo:
+    image: mongo
+    restart: always
+    volumes:
+      - "./data/db:/data/db"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME:
+      MONGO_INITDB_ROOT_PASSWORD:
+    ports:
+      - "27018:27017"
+  api-server-1:
+    image: formio/formio-enterprise:latest
+    mem_limit: 1024m
+    restart: always
+    links:
+      - mongo
+    ports:
+      - "${DOCKER_API_SRC_PORT}:${DOCKER_API_SRC_PORT}"
+    environment:
+      MONGO: ${DOCKER_MONGO_SRC}
+      PORT: ${DOCKER_API_SRC_PORT}
+    env_file:
+      - .env
+  api-server-2:
+    image: formio/formio-enterprise:latest
+    mem_limit: 1024m
+    restart: always
+    links:
+      - mongo
+    ports:
+      - "${DOCKER_API_DST_PORT}:${DOCKER_API_DST_PORT}"
+    environment:
+      MONGO: ${DOCKER_MONGO_DST}
+      PORT: ${DOCKER_API_DST_PORT}
+    env_file:
+      - .env

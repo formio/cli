@@ -1,13 +1,9 @@
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe, it */
 'use strict';
 
-var request = require('supertest');
+const request = require('supertest');
 const assert = require('assert');
 const copy = require('../../src/copy');
-
-require('dotenv').config();
 
 module.exports = (template) => {
   const options = {};

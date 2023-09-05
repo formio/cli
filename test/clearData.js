@@ -3,8 +3,7 @@
 /* eslint-disable no-prototype-builtins */
 /* globals describe, it, before, after */
 'use strict';
-var async = require('async');
-require('dotenv').config();
+const async = require('async');
 const {MongoClient} = require('mongodb');
 
 let src, dst;
@@ -24,14 +23,9 @@ const connectDb = async(uri) => {
       db,
       projects: db.collection('projects'),
       forms: db.collection('forms'),
-      ogSubmissions: db.collection('submissions'),
       submissions: db.collection('submissions'),
-      submissionrevisions: db.collection('submissionrevisions'),
       roles: db.collection('roles'),
-      actions: db.collection('actions'),
-      actionItems: db.collection('actionitems'),
-      formrevisions: db.collection('formrevisions'),
-      tags: db.collection('tags')
+      actions: db.collection('actions')
     };
   }
   catch (err) {
@@ -47,8 +41,8 @@ module.exports = () => {
 
     before(async() => {
       try {
-        src = await connectDb(`mongodb://localhost:27017/${process.env.DATA_BASE_SRC}`);
-        dst = await connectDb(`mongodb://localhost:27017/${process.env.DATA_BASE_DST}`);
+        src = await connectDb(process.env.MONGO_SRC);
+        dst = await connectDb(process.env.MONGO_DST);
       }
       catch (err) {
         console.log(err);

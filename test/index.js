@@ -1,13 +1,11 @@
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe */
 'use strict';
-require('dotenv').config();
+require('dotenv').config({path: 'test.env'});
 
 const template= {src:{forms: {}, submission:{textForm1: [], textForm2: [], textForm3: []}}, dst: {forms: {}}};
 
-template.appScr = 'http://localhost:3001';
-template.appDst ='http://localhost:3002';
+template.appSrc = process.env.API_SRC;
+template.appDst = process.env.API_DST;
 
 describe('Start tests',  function() {
   require('./clearData')();
@@ -17,6 +15,7 @@ describe('Start tests',  function() {
     require('./migrate/migrate')(template);
     require('./copy/copy')(template);
     require('./deploy/deploy')(template);
+    // require('./clone');
   });
 });
 
