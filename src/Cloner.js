@@ -632,6 +632,7 @@ class Cloner {
     }, null, (current) => {
       return {
         project: destProject._id,
+        _id: current._id,
         title: current.title
       };
     });
@@ -855,7 +856,9 @@ class Cloner {
     // Say we are done.
     process.stdout.write('\n');
     console.log('Done!');
-    await this.disconnect();
+    if (process.env.TEST_SUITE !== '1') {
+      await this.disconnect();
+    }
   }
 }
 

@@ -117,7 +117,7 @@ module.exports = (template) => {
         server:'http://localhost:3001',
         srcAdminKey: undefined
       };
-      options.params =['test/migrate/import.csv', 'test/migrate/transform.js', `http://localhost:3001/${template.src.project.name}/form/${template.src.forms.textForm2._id}`];
+      options.params =['formio-cli/test/migrate/import.csv', 'formio-cli/test/migrate/transform.js', `http://localhost:3001/${template.src.project.name}/form/${template.src.forms.textForm2._id}`];
 
       migrate(options, (err) => {
         if (!err) {

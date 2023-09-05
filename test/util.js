@@ -9,7 +9,9 @@ module.exports = {
     const submissions = [];
     const actions = [];
     const actionItems = [];
+
     await cloner.connect();
+
     const project = {
       title: `Test Project ${faker.string.alphanumeric(10)}`,
       name: `test${faker.string.alpha(10)}`,

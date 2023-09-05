@@ -9,7 +9,7 @@ module.exports = (template) => {
     options.dstOptions.adminKey = 'dockerAdminKey';
     options.adminKey = 'dockerAdminKey';
     it('Should show submissions in console.', (done) => {
-      options.params =['http://localhost:3001/formio/textForm1', 'test/submissions/middleware.js'];
+      options.params =['http://localhost:3001/formio/textForm1', 'formio-cli/test/submissions/middleware.js'];
 
       submission(options, (err, submission) => {
         if (err) {
@@ -26,7 +26,7 @@ module.exports = (template) => {
     });
 
     it('Should show error message.', (done) => {
-      options.params =[undefined, 'test/middleware.js'];
+      options.params =[undefined, 'formio-clitest/middleware.js'];
 
       submission(options, (err, submission) => {
         assert.equal(err, 'You must provide a source form to load submissions.');
