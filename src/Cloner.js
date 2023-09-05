@@ -164,7 +164,7 @@ class Cloner {
       await beforeEach(src, update, dest);
     }
     if (this.beforeAll) {
-      await this.beforeAll(collection, src, update, dest);x``
+      await this.beforeAll(collection, src, update, dest);
     }
   }
 
@@ -253,7 +253,7 @@ class Cloner {
       try {
         // Create the item we will be inserting/updating.
         const destItem = await this.findLast(`dest.${collection}`, this.findQuery(current, find));
-        const updatedItem = _.assign(destItem || {}, _.omit(srcItem, ['_id']));
+        const updatedItem = {...destItem, ...(_.omit(srcItem, ['_id']))};
 
         // Call before handler and then update if it says we should.
         if (
@@ -608,7 +608,7 @@ class Cloner {
 
       this.setCollection(update, srcProject, destProject);
       update.project = destProject._id;
-      this.migrateFormAccess(update);
+      this.migrateFormAccess(src, update);
     }, async(srcForm, destForm) => {
       if (this.options.deleteSubmissions) {
         console.log(`Deleting submissions from ${destForm.title}`);
@@ -740,16 +740,16 @@ class Cloner {
       this.dstSecret = decryptedDstSettings.secret;
     }
 
-    // Do not overwrite existing destination project settings.
-    if (dest && dest['settings_encrypted']) {
-      update['settings_encrypted'] = dest['settings_encrypted'];
-      return;
-    }
-
     // Decrypt the source, and set the update to the re-encrypted settings object.
     const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, src['settings_encrypted'], true);
     if (decryptedSrcSettings.secret) {
       this.srcSecret = decryptedSrcSettings.secret;
+    }
+
+    // Do not overwrite existing destination project settings.
+    if (dest && dest['settings_encrypted']) {
+      update['settings_encrypted'] = dest['settings_encrypted'];
+      return;
     }
 
     update['settings_encrypted'] = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
