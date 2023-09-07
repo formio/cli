@@ -1,12 +1,23 @@
-/* eslint-disable max-depth */
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe, it */
 'use strict';
 const request = require('supertest');
-const formioProject = require('./fixtures/default.json');
+const formioProject = require('./templates/default.json');
 const async = require('async');
-const {textFormFirstSrc, textFormFirstDst, submissionFirst, submissionSecond, textFormSecondSrc, submissionThird, textFormThirdSrc, textFormFirstDst2, textFormFirstDst3, textFormResource, textFormSrcResource, textFormDstResource, formCopyChainSrc, formCopyChainDst, formDeployCheck} = require('./fixtures/fix');
+const {
+  textFormFirstSrc,
+  textFormFirstDst,
+  submissionFirst,
+  submissionSecond,
+  textFormSecondSrc,
+  submissionThird,
+  textFormThirdSrc,
+  textFormFirstDst2,
+  textFormSrcResource,
+  textFormDstResource,
+  formCopyChainSrc,
+  formCopyChainDst,
+  formDeployCheck
+} = require('./templates/test');
 
 module.exports = (template) => {
   describe('Create Template', function() {
@@ -136,4 +147,3 @@ module.exports = (template) => {
     });
   });
 };
-

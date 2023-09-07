@@ -1,7 +1,4 @@
-/* eslint-disable max-depth */
-/* eslint-disable max-len */
-/* eslint-disable no-prototype-builtins */
-/* globals describe, it, before, after */
+/* globals describe, it, before */
 'use strict';
 const async = require('async');
 const {MongoClient} = require('mongodb');
@@ -33,7 +30,7 @@ const connectDb = async(uri) => {
   }
 };
 
-module.exports = () => {
+module.exports = (mongoSrc, mongoDest) => {
   describe('', function() {
     it('Clear server Data',  function(done) {
       done();
@@ -41,8 +38,8 @@ module.exports = () => {
 
     before(async() => {
       try {
-        src = await connectDb(process.env.MONGO_SRC);
-        dst = await connectDb(process.env.MONGO_DST);
+        src = await connectDb(mongoSrc);
+        dst = await connectDb(mongoDest);
       }
       catch (err) {
         console.log(err);

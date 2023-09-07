@@ -1,42 +1,37 @@
-/* globals describe, it */
+/* globals describe, it, before */
 'use strict';
 
 var request = require('supertest');
 const assert = require('assert');
 const deploy = require('../../src/deploy');
 
-// require('dotenv').config();
-
 module.exports = (template) => {
   const options = {};
 
   options.srcOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3001',
-    key: undefined,
+    adminKey:process.env.ADMIN_KEY,
+    dstAdminKey:process.env.ADMIN_KEY,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3001', srcAdminKey:'dockerAdminKey'
+    server: process.env.API_SRC,
+    srcAdminKey:process.env.ADMIN_KEY
   };
 
   options.dstOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3002',
-    key: undefined,
+    adminKey:process.env.ADMIN_KEY,
+    dstAdminKey:process.env.ADMIN_KEY,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3002',
-    srcAdminKey:'dockerAdminKey'
+    server:process.env.API_DST,
+    srcAdminKey:process.env.ADMIN_KEY
   };
 
-  describe('Deploy command', function() {
-    it('Should deploy project', (done) => {
-      options.params =['http://localhost:3001/formio', 'http://localhost:3002/formio'];
-      options.srcAdminKey ='dockerAdminKey';
-      options.dstAdminKey ='dockerAdminKey';
+  describe('Deploy command', () => {
+    before(() => {
+      options.params =[`${process.env.API_SRC}/formio`, `${process.env.API_DST}/formio`];
+      options.srcAdminKey =process.env.ADMIN_KEY;
+      options.dstAdminKey =process.env.ADMIN_KEY;
+    });
 
+    it('Should deploy project', (done) => {
       request(template.appSrc)
         .get('/project/'+ template.src.project._id +'/form?limit=9999999')
         .set('x-admin-key', process.env.ADMIN_KEY)
@@ -92,11 +87,7 @@ module.exports = (template) => {
         });
     });
 
-    it('Should not alow to deploy for unpaid plans', (done) => {
-      options.params =['http://localhost:3001/formio', 'http://localhost:3002/formio'];
-      options.srcAdminKey ='dockerAdminKey';
-      options.dstAdminKey ='dockerAdminKey';
-
+    it('Should not allow to deploy for unpaid plans', (done) => {
       request(template.appSrc)
         .put('/project/'+ template.src.project._id)
         .set('x-admin-key', process.env.ADMIN_KEY)

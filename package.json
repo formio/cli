@@ -4,7 +4,7 @@
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
-    "test": "cd ./test/docker && docker-compose up -d && cd ../.. && yarn mocha ./test/index -b -t 60000 && cd ./test/docker && docker-compose down",
+    "test": "export LICENSE_KEY=$(node -e \"console.log(require('@formio/keys/license').formioCliTestsOfflineLicense)\") && cd ./test/docker && docker-compose up -d && cd ../.. && yarn mocha ./test/index -b -t 60000 && cd ./test/docker && docker-compose down",
     "lint": "eslint *.js **/**.js src/**.js src/**/**.js"
   },
   "author": "",

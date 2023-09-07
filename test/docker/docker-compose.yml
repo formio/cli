@@ -21,6 +21,7 @@ services:
     environment:
       MONGO: ${DOCKER_MONGO_SRC}
       PORT: ${DOCKER_API_SRC_PORT}
+      LICENSE_KEY: ${LICENSE_KEY}
     env_file:
       - .env
   api-server-2:
@@ -34,5 +35,6 @@ services:
     environment:
       MONGO: ${DOCKER_MONGO_DST}
       PORT: ${DOCKER_API_DST_PORT}
+      LICENSE_KEY: ${LICENSE_KEY}
     env_file:
       - .env

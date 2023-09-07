@@ -6,29 +6,33 @@ const submission = require('../../src/submissions');
 module.exports = (template) => {
   describe('Submission Command', function() {
     const options={dstOptions:{}};
-    options.dstOptions.adminKey = 'dockerAdminKey';
-    options.adminKey = 'dockerAdminKey';
+    options.dstOptions.adminKey = process.env.ADMIN_KEY;
+    options.adminKey = process.env.ADMIN_KEY;
+
     it('Should show submissions in console.', (done) => {
-      options.params =['http://localhost:3001/formio/textForm1', 'formio-cli/test/submissions/middleware.js'];
+      options.params = [`${process.env.API_SRC}/formio/textForm1`, 'test/submissions/middleware.js'];
 
       submission(options, (err, submission) => {
         if (err) {
           console.log(err.toString().red);
           return done(err);
         }
-        if (err == null && submission ==null) {
+
+        if (!submission) {
           return done();
         }
-        const submissionIds = template.src.submission.textForm1.map(x=>x._id);
-        const isSubmissionInTemplate = submissionIds.includes(submission._id);
-        assert.equal(isSubmissionInTemplate, true);
+
+        assert.ok(
+          template.src.submission.textForm1.some(sub => sub._id === submission._id),
+          'Should output submission from template'
+        );
       });
     });
 
-    it('Should show error message.', (done) => {
-      options.params =[undefined, 'formio-clitest/middleware.js'];
+    it('Should throw an error if form URL not provided.', (done) => {
+      options.params = [];
 
-      submission(options, (err, submission) => {
+      submission(options, (err) => {
         assert.equal(err, 'You must provide a source form to load submissions.');
         done();
       });

@@ -9,32 +9,31 @@ module.exports = (template) => {
   const options = {};
 
   options.srcOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3001',
-    key: undefined,
+    adminKey:process.env.ADMIN_KEY,
+    dstAdminKey:process.env.ADMIN_KEY,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3001', srcAdminKey:'dockerAdminKey'
+    server:process.env.API_SRC,
+    srcAdminKey:process.env.ADMIN_KEY
   };
 
   options.dstOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3002',
-    key: undefined,
+    adminKey:process.env.ADMIN_KEY,
+    dstAdminKey:process.env.ADMIN_KEY,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3002',
-    srcAdminKey:'dockerAdminKey'
+    server:process.env.API_DST,
+    srcAdminKey:process.env.ADMIN_KEY
   };
 
-  options.srcAdminKey ='dockerAdminKey';
-  options.dstAdminKey ='dockerAdminKey';
+  options.srcAdminKey = process.env.ADMIN_KEY;
+  options.dstAdminKey = process.env.ADMIN_KEY;
 
   describe('Copy command', function() {
-    it('Should copy forms from src to dst', (done) => {
-      options.params =['form', 'http://localhost:3001/formio/textForm1', 'http://localhost:3002/formio/textFormDst2'];
+    it('Should copy forms from source to destination', (done) => {
+      options.params =[
+        'form',
+        `${process.env.API_SRC}/formio/textForm1`,
+        `${process.env.API_DST}/formio/textFormDst2`
+      ];
 
       request(template.appDst)
         .get('/project/'+ template.dst.project._id +'/form/'+template.dst.forms.textFormDst2._id)
@@ -75,8 +74,12 @@ module.exports = (template) => {
         });
     });
 
-    it('Should copy resources from src to dst', (done) => {
-      options.params =['resource', 'http://localhost:3001/formio/textFormSrcResource', 'http://localhost:3002/formio/textFormDstResource'];
+    it('Should copy resources from source to destination', (done) => {
+      options.params =[
+        'resource',
+        `${process.env.API_SRC}/formio/textFormSrcResource`,
+        `${process.env.API_DST}/formio/textFormDstResource`
+      ];
 
       request(template.appDst)
         .get('/project/'+ template.dst.project._id +'/form/'+template.dst.forms.textFormDstResource._id)
@@ -117,8 +120,12 @@ module.exports = (template) => {
         });
     });
 
-    it('Should copy chain forms', (done) => {
-      options.params =['form', 'http://localhost:3001/formio/formCopyChainSrc,http://localhost:3001/formio/textForm1' , 'http://localhost:3002/formio/formCopyChainDst'];
+    it('Should copy multiple source form components into one destination form', (done) => {
+      options.params =[
+        'form',
+        `${process.env.API_SRC}/formio/formCopyChainSrc,${process.env.API_SRC}/formio/textForm1`,
+        `${process.env.API_DST}/formio/formCopyChainDst`
+      ];
 
       request(template.appDst)
         .get('/project/'+ template.dst.project._id +'/form/'+template.dst.forms.formCopyChainDst._id)
@@ -165,4 +172,3 @@ module.exports = (template) => {
     });
   });
 };
-

@@ -10,29 +10,29 @@ module.exports = (template) => {
   const options = {};
 
   options.srcOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3001',
-    key: undefined,
+    adminKey: process.env.ADMIN_KEY,
+    dstAdminKey: process.env.ADMIN_KEY,
+    host: process.env.API_SRC,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3001', srcAdminKey:'dockerAdminKey'
+    server: process.env.API_SRC,
+    srcAdminKey: process.env.ADMIN_KEY
   };
 
   options.dstOptions =  {
-    adminKey:'dockerAdminKey',
-    dstAdminKey:'dockerAdminKey',
-    host:'localhost:3002',
-    key: undefined,
+    adminKey: process.env.ADMIN_KEY,
+    dstAdminKey: process.env.ADMIN_KEY,
     projectName:'formio',
-    protocol:'http',
-    server:'http://localhost:3002',
-    srcAdminKey:'dockerAdminKey'
+    server: process.env.API_DST,
+    srcAdminKey: process.env.ADMIN_KEY
   };
 
   describe('Migrate command', function() {
-    it('Should migrate submissions from src to dst forms', (done) => {
-      options.params =['http://localhost:3001/formio/textForm1', 'form', 'http://localhost:3002/formio/textFormDst'];
+    it('Should migrate submissions from source form to destination form', (done) => {
+      options.params =[
+        `${process.env.API_SRC}/formio/textForm1`,
+        'form',
+        `${process.env.API_DST}/formio/textFormDst`
+      ];
 
       migrate(options, (err) => {
         if (!err) {
@@ -55,8 +55,12 @@ module.exports = (template) => {
       });
     });
 
-    it('Should migrate all project', (done) => {
-      options.params =['http://localhost:3001/formio', 'project', `http://localhost:3002/${template.dst.stagedProject.name}`];
+    it('Should migrate all source project forms and submissions to destination project', (done) => {
+      options.params =[
+        `${process.env.API_SRC}/formio`,
+        'project',
+        `${process.env.API_DST}/${template.dst.stagedProject.name}`
+      ];
       options.dstOptions.projectName =template.dst.stagedProject.name,
 
       migrate(options, (err) => {
@@ -104,20 +108,21 @@ module.exports = (template) => {
       });
     });
 
-    it('Should migrate from cvs file', (done) => {
+    it('Should migrate submissions from CSV file and pass them through transformer function', (done) => {
       const options = {};
-      options.dstAdminKey = 'dockerAdminKey';
+      options.dstAdminKey = process.env.ADMIN_KEY;
       options.dstOptions =  {
-        adminKey:'dockerAdminKey',
-        dstAdminKey:'dockerAdminKey',
-        host:'localhost:3001',
-        key: undefined,
+        adminKey: process.env.ADMIN_KEY,
+        dstAdminKey: process.env.ADMIN_KEY,
         projectName:'formio',
-        protocol:'http',
-        server:'http://localhost:3001',
+        server: process.env.API_SRC,
         srcAdminKey: undefined
       };
-      options.params =['formio-cli/test/migrate/import.csv', 'formio-cli/test/migrate/transform.js', `http://localhost:3001/${template.src.project.name}/form/${template.src.forms.textForm2._id}`];
+      options.params =[
+        'test/migrate/import.csv',
+        'test/migrate/transform.js',
+        `${process.env.API_SRC}/${template.src.project.name}/form/${template.src.forms.textForm2._id}`
+      ];
 
       migrate(options, (err) => {
         if (!err) {
@@ -141,8 +146,12 @@ module.exports = (template) => {
       });
     });
 
-    it('Should migrate form with --delete option', (done) => {
-      options.params =['http://localhost:3001/formio/textForm2', 'form', 'http://localhost:3002/formio/textFormDst'];
+    it('Should delete destination form submissions when migrating with --delete option', (done) => {
+      options.params =[
+        `${process.env.API_SRC}/formio/textForm2`,
+        'form',
+        `${process.env.API_DST}/formio/textFormDst`
+      ];
       options.delete = true;
 
       request(template.appDst)
@@ -177,8 +186,12 @@ module.exports = (template) => {
         });
     });
 
-    it('Should migrate project with --startWith', (done) => {
-      options.params =['http://localhost:3001/formio', 'project', `http://localhost:3002/${template.dst.stagedProject2.name}`];
+    it('Should migrate project forms starting with the specified form path', (done) => {
+      options.params =[
+        `${process.env.API_SRC}/formio`,
+        'project',
+        `${process.env.API_DST}/${template.dst.stagedProject2.name}`
+      ];
       options.startWith = 'textform2';
       options.delete = false;
       options.dstOptions.projectName = template.dst.stagedProject2.name,
