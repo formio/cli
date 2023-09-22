@@ -507,7 +507,7 @@ class Cloner {
       if (compsWithEncryptedData.length) {
         this.migrateDataEncryption(src, update, compsWithEncryptedData);
       }
-      this.migrateRoles(update.roles);
+      update.roles = this.migrateRoles(update.roles);
       this.migrateAccess(src.access, update.access);
     }, async(srcSubmission, destSubmission) => {
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData);
@@ -683,6 +683,9 @@ class Cloner {
    * @param {*} roles - An array of role ids that need to be migrated.
    */
   migrateRoles(roles) {
+    if (!roles || !roles.length) {
+      return [];
+    }
     const newRoles = [];
     if (roles && roles.length) {
       roles.forEach((roleId) => newRoles.push(this.destRole(roleId)));
