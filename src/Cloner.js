@@ -489,7 +489,7 @@ class Cloner {
     process.stdout.write('         - Submissions:');
 
     // Determine the last one cloned, and ensure that we only fetch submissions after that date.
-    const lastSubmission = await this.findLast('dest.submissions', {
+    const lastSubmission = this.options.updateExistingSubmissions ? null : await this.findLast('dest.submissions', {
       form: destForm._id,
       project: destForm.project
     });
@@ -507,10 +507,11 @@ class Cloner {
       if (compsWithEncryptedData.length) {
         this.migrateDataEncryption(src, update, compsWithEncryptedData);
       }
+      this.migrateRoles(update.roles);
       this.migrateAccess(src.access, update.access);
     }, async(srcSubmission, destSubmission) => {
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData);
-    }, false);
+    }, this.options.updateExistingSubmissions ? null : false);
   }
 
   /**
