@@ -28,6 +28,8 @@ class Cloner {
    * @param {*} options.deleteSubmissions - Delete the submissions of a form before cloning it.
    * @param {*} options.includeFormRevisions - Include form revisions when cloning forms.
    * @param {*} options.includeSubmissionRevisions - Include submission revisions when cloning submissions.
+   * @param {*} options.updateExistingSubmissions - Update existing submissions when found in the destination (performs a complete re-clone).
+   * @param {*} options.forms - A comma-separated value of all the Form ID's you wish to clone. If included, then only the provided forms will be cloned.
    * @param {*} options.submissionsOnly - Only clone submissions.
    */
   constructor(mongoSrc, mongoDest = '', options = {}) {
@@ -374,6 +376,17 @@ class Cloner {
   }
 
   /**
+   * Create a decorated query for forms searching.
+   */
+  formQuery(srcProject = null, defaultQuery = {}) {
+    const query = this.projectQuery(srcProject, defaultQuery);
+    if (this.options.forms) {
+      query._id = {$in: this.options.forms.split(',').map((id) => new ObjectId(id))};
+    }
+    return query;
+  }
+
+  /**
    * Sets the submission collection configuration for the destination imports.
    * @param {*} form - The form we are currently cloning.
    * @param {*} srcProj - The source project.
@@ -593,7 +606,7 @@ class Cloner {
     process.stdout.write('\n');
     process.stdout.write('   - Forms:');
     let compsWithEncryptedData = [];
-    await this.upsertAll('forms', this.projectQuery(srcProject), (form) => {
+    await this.upsertAll('forms', this.formQuery(srcProject), (form) => {
       process.stdout.write('\n');
       process.stdout.write(`- Form: ${form.title}`);
     }, async(src, update, dest) => {
