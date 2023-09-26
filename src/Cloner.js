@@ -6,10 +6,12 @@ const _ = require('lodash');
 const crypto = require('crypto');
 const keygenerator = require('keygenerator');
 const {eachComponentAsync}  = require('./eachComponentAsync');
+const {createHmac} = require('node:crypto');
+const fetch = require('./fetch');
 
 class Cloner {
   /**
-   * @param {*} mongoSrc - The source mongo connection string.
+   * @param {*} srcPath - The source connection string.
    * @param {*} mongoDest - The destination mongo connection string.
    * @param {*} options - The options for the cloner.
    * @param {*} options.srcCa - The source CA file.
@@ -30,17 +32,33 @@ class Cloner {
    * @param {*} options.includeSubmissionRevisions - Include submission revisions when cloning submissions.
    * @param {*} options.submissionsOnly - Only clone submissions.
    */
-  constructor(mongoSrc, mongoDest = '', options = {}) {
-    this.mongoSrc = mongoSrc;
+  constructor(srcPath, mongoDest = '', options = {}) {
+    this.srcPath = srcPath;
     this.mongoDest = mongoDest;
     this.beforeAll = null;
     this.afterAll = null;
-    this.createNew = (mongoSrc === mongoDest);
+    this.createNew = (srcPath === mongoDest);
     this.defaultSaltLength = 40;
     this.options = options;
     this.src = null;
     this.dest = null;
     this.cloneState = {};
+
+    this.documentsInside = {
+      actions: {actions:0, skip:0},
+      projects:{projects:0, skip:0},
+      forms: {forms:0, skip:0},
+      submissions:{submissions:0, skip:0},
+      roles:{roles:0, skip:0},
+      formrevisions:{formrevisions:0, skip:0},
+      tags:{tags:0, skip:0},
+      submissionrevisions:{submissionrevisions:0, skip:0},
+
+    };
+
+    this.limit = 800;
+    this.currentForm ={};
+    this.currentSubmission ={};
 
     try {
       this.cloneState = JSON.parse(fs.readFileSync('clonestate.json', 'utf8'));
@@ -235,6 +253,39 @@ class Cloner {
     return {_id: current._id};
   }
 
+  getDate(value) {
+    if (value instanceof Date) {
+      return value;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      return new Date(value);
+    }
+
+    throw new Error(`Can't extract date from ${value}`);
+  }
+
+  convertStringFieldsToObject(updatedItem) {
+    const idFields = ['owner','_rid', 'form', 'project'];
+    const dateFields = ['trial', 'created', 'modified'];
+
+    idFields.forEach(item=> {
+      if (updatedItem[item]) {
+        const result = ObjectId.isValid(updatedItem[item]);
+        if (!result) {
+          updatedItem[item] = null;
+        }
+        updatedItem[item] = new ObjectId(updatedItem[item]);
+      }
+    });
+
+    dateFields.forEach(item=> {
+      if (updatedItem[item]) {
+        updatedItem[item] = this.getDate(updatedItem[item]);
+      }
+    });
+  }
+
   /**
    * Upsert a record in the destination database.
    * @param {*} collection - The collection to upsert to.
@@ -244,29 +295,36 @@ class Cloner {
    * @param {*} find - The query to use to find the "equivalent" document in the destination database.
    */
   async upsertAll(collection, query, eachItem, beforeEach, afterEach, find = null) {
-    await this.each(`src.${collection}`, query, async(current) => {
+    this.options.server?  await this.connectToServerDb(collection, query, async(current) => {
       const srcItem = _.cloneDeep(current);
+      srcItem._id = new ObjectId(srcItem._id);
+
       if (eachItem) {
         eachItem(srcItem);
       }
 
       try {
         // Create the item we will be inserting/updating.
-        const destItem = await this.findLast(`dest.${collection}`, this.findQuery(current, find));
+        const destItem = await this.findLast(`dest.${collection}`, this.findQuery(srcItem, find));
         const updatedItem = {...destItem, ...(_.omit(srcItem, ['_id']))};
 
         // Call before handler and then update if it says we should.
         if (
           this.shouldClone(collection, srcItem) &&
-          await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false
-        ) {
+          await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false) {
           if (destItem) {
+            this.convertStringFieldsToObject(updatedItem);
             await this.dest[collection].updateOne(this.findQuery(destItem),
               {$set: _.omit(updatedItem, ['_id', 'machineName'])}
             );
           }
           else {
             updatedItem._id = srcItem._id;
+            if (collection === 'projects') {
+              updatedItem.machineName = updatedItem.name;
+            }
+            this.convertStringFieldsToObject(updatedItem);
+
             await this.dest[collection].insertOne(updatedItem);
           }
         }
@@ -277,7 +335,41 @@ class Cloner {
       catch (err) {
         console.error(`Error creating ${collection} ${current._id}`, err);
       }
-    });
+    }):
+      await this.each(`src.${collection}`, query, async(current) => {
+        const srcItem = _.cloneDeep(current);
+        if (eachItem) {
+          eachItem(srcItem);
+        }
+
+        try {
+        // Create the item we will be inserting/updating.
+          const destItem = await this.findLast(`dest.${collection}`, this.findQuery(current, find));
+          const updatedItem = {...destItem, ...(_.omit(srcItem, ['_id']))};
+
+          // Call before handler and then update if it says we should.
+          if (
+            this.shouldClone(collection, srcItem) &&
+            await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false
+          ) {
+            if (destItem) {
+              await this.dest[collection].updateOne(this.findQuery(destItem),
+                {$set: _.omit(updatedItem, ['_id', 'machineName'])}
+              );
+            }
+            else {
+              updatedItem._id = srcItem._id;
+              await this.dest[collection].insertOne(updatedItem);
+            }
+          }
+
+          // Call the after handler.
+          await this.after(collection, afterEach, srcItem, updatedItem, destItem);
+        }
+        catch (err) {
+          console.error(`Error creating ${collection} ${current._id}`, err);
+        }
+      });
   }
 
   /**
@@ -382,15 +474,20 @@ class Cloner {
   setCollection(form, srcProj, destProj) {
     const subsCollection = _.get(form, 'settings.collection');
     if (!subsCollection) {
-      this.src.submissions = this.src.ogSubmissions;
+      if (!this.options.server) {
+        this.src.submissions = this.src.ogSubmissions;
+      }
       this.dest.submissions = this.dest.ogSubmissions;
       return;
     }
     console.log(`Using collection - ${subsCollection}`);
     // eslint-disable-next-line max-len
-    this.src.submissions = srcProj && subsCollection ? this.src.db.collection(`${srcProj.name}_${subsCollection}`) : this.src.ogSubmissions;
-    // eslint-disable-next-line max-len
-    this.dest.submissions = destProj && subsCollection ? this.dest.db.collection(`${destProj.name}_${subsCollection}`) : this.dest.ogSubmissions;
+    if (!this.options.server) {
+      // eslint-disable-next-line max-len
+      this.src.submissions = srcProj && subsCollection ? this.src.db.collection(`${srcProj.name}_${subsCollection}`) : this.src.ogSubmissions;
+    }
+    this.dest.submissions = destProj && subsCollection ?
+      this.dest.db.collection(`${destProj.name}_${subsCollection}`) : this.dest.ogSubmissions;
   }
 
   /**
@@ -426,16 +523,126 @@ class Cloner {
     }
   }
 
+  /**
+   * Iterate through each document in a collection.
+   *
+   * @param {*} collection - The collection to iterate through.
+   * @param {*} query - The query to use to find the documents.
+   * @param {*} cb - The callback to call for each document.
+   */
+
+  resetDocumentsData(collection) {
+    this.documentsInside[collection][collection] = 0;
+    this.documentsInside[collection].skip =0;
+  }
+
+  getApiPath(collection) {
+    switch (collection) {
+    case 'projects':
+      return `${this.src}`;
+
+    case 'roles':
+      return `${this.src}/role`;
+
+    case 'formrevisions':
+      return `${this.src}/form/${this.currentForm._id}/v?sort=-_vid`;
+
+    case 'tags':
+      return `${this.src}/tag`;
+
+    case 'forms':
+      return `${this.src}/form`;
+
+    case 'submissions':
+      return `${this.src}/form/${this.currentForm._id}/submission`;
+
+    case 'actions':
+      return `${this.src}/form/${this.currentForm._id}/action`;
+
+    case 'submissionrevisions':
+      // eslint-disable-next-line max-len
+      return `${this.src}/form/${this.currentForm._id}/submission/${this.currentSubmission._id}/v?sort=-_vid`;
+
+    default:
+      console.log(`Sorry, we are out of ${collection}.`);
+    }
+  }
+
+  async triggerServer(collection, cb, query) {
+    const options = {
+      key: this.options.key,
+      noThrowOnError: true
+    };
+
+    const fetchWithHeaders = fetch(options);
+    const urlPath = `${this.getApiPath(collection)}`+ (collection ==='projects'?'':
+      `?limit=${this.limit}&skip=${this.documentsInside[collection].skip}`)+
+       (collection ==='submissions' && query.created?
+         `&created__gt=${new Date(query.created.$gt).getTime()}` :'');
+
+    const data = await fetchWithHeaders({
+      url: urlPath,
+      method: 'GET',
+      headers: {'x-raw-data-access': createHmac('sha256', this.options.key).digest('hex')}
+    });
+
+    if (data.ok || !data.ok && data.status === 416) {
+      let result = Array.isArray(data.body)? data.body: [data.body];
+      this.documentsInside[collection][collection] = result.length;
+
+      if (result.length === 0) {
+        return;
+      }
+      for (const item of result) {
+        // eslint-disable-next-line callback-return
+        await cb(item);
+      }
+    }
+    else {
+      console.error(`HTTP Error: ${data.status} ${data.statusText} ${data.url} \n ${JSON.stringify(data.body)}`);
+      return;
+    }
+  }
+
+  async connectToServerDb(collection, query, cb) {
+    if (collection ==='projects') {
+      await this.triggerServer(collection, cb);
+      return;
+    }
+
+    let firstTimeCall = true;
+    while (this.documentsInside[collection][collection] !== 0 || firstTimeCall) {
+      firstTimeCall = false;
+
+      await this.triggerServer(collection, cb, query);
+
+      if (this.documentsInside[collection][collection]=== 0) {
+        break;
+      }
+
+      this.documentsInside[collection].skip = this.documentsInside[collection].skip + this.limit;
+    }
+    this.resetDocumentsData(collection);
+  }
+
   async connect() {
-    if (this.mongoSrc === this.mongoDest) {
+    if (this.srcPath === this.mongoDest) {
       throw new Error('Source and destination databases cannot be the same.');
     }
 
-    // Connect to the source databases.
-    this.src = await this.connectDb(this.mongoSrc, 'src');
+    if (this.srcPath && !this.options.server) {
+      this.src = await this.connectDb(this.srcPath, 'src');
+    }
+
+    else if (this.options.key) {
+      this.src = this.srcPath;
+    }
+    else {
+      throw new Error('you need provide Source KEY');
+    }
 
     // If there are no source projects, then we can assume we are cloning from OSS.
-    this.oss = !(await this.src.projects.findOne({}));
+    this.oss = this.options.server? false: !(await this.src.projects.findOne({}));
 
     // Connect to the destination databases.
     if (this.mongoDest) {
@@ -448,7 +655,9 @@ class Cloner {
    */
   async disconnect() {
     // Disconnect from the source and destination databases.
-    await this.src.client.close();
+    if (!this.options.server) {
+      await this.src.client.close();
+    }
     await this.dest.client.close();
   }
 
@@ -498,7 +707,7 @@ class Cloner {
     const query = this.afterQuery({
       form: srcForm._id,
       project: srcForm.project
-    }, lastSubmission && lastSubmission.created ? lastSubmission.created.getTime() : null);
+    }, lastSubmission && lastSubmission.created ? this.getDate(lastSubmission.created).getTime() : null);
 
     // Clone the submissions.
     await this.upsertAll('submissions', query, null, async(src, update) => {
@@ -509,6 +718,7 @@ class Cloner {
       }
       this.migrateAccess(src.access, update.access);
     }, async(srcSubmission, destSubmission) => {
+      this.currentSubmission = srcSubmission;
       await this.cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData);
     }, false);
   }
@@ -536,7 +746,16 @@ class Cloner {
    * @param {ObjectId|string} destProjectId - The destination project id.
    */
   async getDestinationRoleId(srcId, destProjectId) {
-    const srcRole = await this.src.roles.findOne({_id: new ObjectId(srcId.toString())});
+    const fetchWithHeaders = fetch({key: this.options.key});
+
+    let role;
+    if (this.options.server) {
+      role = await fetchWithHeaders({
+        url: `${this.src}/role/${srcId.toString()}`,
+        headers: {'x-raw-data-access': createHmac('sha256', this.options.key).digest('hex')}
+      });
+    }
+    const srcRole = this.options.server? role.body: await this.src.roles.findOne({_id: new ObjectId(srcId.toString())});
     if (srcRole) {
       // eslint-disable-next-line max-len
       const destRole = await this.dest.roles.findOne({title: srcRole.title, project: new ObjectId(destProjectId.toString())});
@@ -617,6 +836,7 @@ class Cloner {
           form: destForm._id
         }));
       }
+      this.currentForm = srcForm;
       await this.cloneSubmissions(srcForm, destForm, compsWithEncryptedData);
       await this.cloneActions(srcForm, destForm);
       await this.cloneFormRevisions(srcForm, destForm);
@@ -629,6 +849,7 @@ class Cloner {
     process.stdout.write('   - Roles:');
     await this.upsertAll('roles', this.projectQuery(srcProject), null, (src, update) => {
       update.project = destProject._id;
+      update.__v = 0;
     }, null, (current) => {
       return {
         project: destProject._id,
@@ -765,7 +986,18 @@ class Cloner {
       throw new Error('Destination project not found for this cloning operation.');
     }
     await this.cloneRoles(srcProject, destProject);
-    this.srcRoles = await this.src.roles.find(srcProject ? {project: srcProject._id} : {}).toArray();
+    const fetchWithHeaders = fetch({key: this.options.key});
+
+    let roles;
+    if (this.options.server) {
+      roles = await fetchWithHeaders({
+        url: `${this.src}/role`,
+        headers: {'x-raw-data-access': createHmac('sha256', this.options.key).digest('hex')}
+      });
+    }
+
+    this.srcRoles = this.options.server? roles.body:
+      await this.src.roles.find(srcProject ? {project: srcProject._id} : {}).toArray();
     this.destRoles = await this.dest.roles.find({project: destProject._id}).toArray();
     if (srcProject && destProject) {
       this.migrateFormAccess(srcProject, destProject);
@@ -830,7 +1062,7 @@ class Cloner {
     await this.connect();
 
     // If they wish to only clone submissions, then do that.
-    if (this.options.dstProject || this.options.submissionsOnly || this.oss) {
+    if ((this.options.dstProject || this.options.submissionsOnly || this.oss) && !this.options.server) {
       process.stdout.write('\n');
       process.stdout.write(`Cloning forms and submissions of ${this.sourceProject} to ${this.destProject}.`);
       process.stdout.write('\n');

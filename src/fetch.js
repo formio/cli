@@ -1,3 +1,4 @@
+'use strict';
 const fetch = require('node-fetch');
 
 module.exports = function(options = {}) {
@@ -12,10 +13,12 @@ module.exports = function(options = {}) {
     baseHeaders['x-admin-key'] = options.adminKey;
   }
 
-  return function({ url, method = 'GET', body, headers }) {
+  const noThrowOnError = !!options.noThrowOnError;
+
+  return function({url, method = 'GET', body, headers}) {
     const options = {
       method: method,
-      headers: { ...baseHeaders, ...headers },
+      headers: {...baseHeaders, ...headers},
     };
 
     if (body) {
@@ -26,12 +29,17 @@ module.exports = function(options = {}) {
     return fetch(url, options).then(response => {
       const res = {
         status: response.status,
-        headers: response.headers
+        headers: response.headers,
+        ok: response.ok,
       };
 
       if (response.headers.get('Content-Type').includes('json')) {
         return response.json().then(data => {
           res.body = data;
+
+          if (noThrowOnError) {
+            return res;
+          }
           // response.status < 200 && response.status > 300
           if (!response.ok) {
             throw new Error(`HTTP Error: ${response.status} ${response.statusText} ${response.url} \n ${JSON.stringify(res.body)}`.red);
@@ -39,7 +47,8 @@ module.exports = function(options = {}) {
 
           return res;
         });
-      } else {
+      }
+      else {
         return response.text().then(data => {
           res.body = data;
           // response.status < 200 && response.status > 300
