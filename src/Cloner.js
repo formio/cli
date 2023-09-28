@@ -1,5 +1,5 @@
-/* eslint-disable max-depth */
 'use strict';
+/* eslint-disable max-depth */
 const {MongoClient, ObjectId} = require('mongodb');
 const fs = require('fs');
 const _ = require('lodash');
@@ -33,6 +33,9 @@ class Cloner {
    * @param {*} options.updateExistingSubmissions - Update existing submissions when found in the destination (performs a complete re-clone).
    * @param {*} options.forms - A comma-separated value of all the Form ID's you wish to clone. If included, then only the provided forms will be cloned.
    * @param {*} options.submissionsOnly - Only clone submissions.
+   * @param {*} options.apiSource - Flag to define if we need to clone from an API.
+   * @param {*} options.key - API Key to be used to authenticate in source.
+   * @param {*} options.limit - Parameter passed to the URL query when fetching from the API, limits the amount of records returned at once.
    */
   constructor(srcPath, mongoDest = '', options = {}) {
     this.srcPath = srcPath;
@@ -46,12 +49,20 @@ class Cloner {
     this.dest = null;
     this.cloneState = {};
 
-    this.requestHeaders = this.options.apiSource?
-      {'x-raw-data-access': createHmac('sha256', this.options.key).digest('hex')}: null;
+    if (this.options.apiSource) {
+      this.requestHeaders = {
+        'x-raw-data-access': createHmac('sha256', this.options.key).digest('hex')
+      };
 
-    this.limit = _.get(this.options, 'limit')? +this.options.limit : 1000;
-    this.currentForm ={};
-    this.currentSubmission ={};
+      this.fetch = fetch({
+        key: this.options.key,
+        noThrowOnError: true
+      });
+
+      this.limit = _.get(this.options, 'limit') ? Number(this.options.limit) : 1000;
+      this.currentForm = null;
+      this.currentSubmission = null;
+    }
 
     try {
       this.cloneState = JSON.parse(fs.readFileSync('clonestate.json', 'utf8'));
@@ -246,7 +257,11 @@ class Cloner {
     return {_id: current._id};
   }
 
-  getDate(value) {
+  /**
+   * Convert value to Date.
+   * @param {*} value
+   */
+  convertToDate(value) {
     if (value instanceof Date) {
       return value;
     }
@@ -258,23 +273,41 @@ class Cloner {
     throw new Error(`Can't extract date from ${value}`);
   }
 
-  convertApiObjectToDbRecord(updatedItem) {
-    const idFields = ['owner','_rid', 'form', 'project'];
+  /**
+   * Convert value to ObjectId.
+   * @param {*} value
+   */
+  convertToObjectId(value) {
+    if (value instanceof ObjectId) {
+      return value;
+    }
+
+    if (ObjectId.isValid(value)) {
+      return new ObjectId(value);
+    }
+
+    throw new Error(`Can't convert to ObjectId ${value}`);
+  }
+
+  /**
+   * Converts API returned item fields that have id's to ObjectId type.
+   * @param {*} item - The item to convert.
+   */
+  convertApiObjectToDbRecord(item) {
+    const idFields = ['owner', '_rid', 'form', 'project'];
     const dateFields = ['trial', 'created', 'modified'];
 
-    idFields.forEach(item=> {
-      if (updatedItem[item]) {
-        const result = ObjectId.isValid(updatedItem[item]);
-        if (!result) {
-          updatedItem[item] = null;
-        }
-        updatedItem[item] = new ObjectId(updatedItem[item]);
+    idFields.forEach(fieldName => {
+      // eslint-disable-next-line no-prototype-builtins
+      if (item.hasOwnProperty(fieldName)) {
+        item[fieldName] = this.convertToObjectId(item[fieldName]);
       }
     });
 
-    dateFields.forEach(item=> {
-      if (updatedItem[item]) {
-        updatedItem[item] = this.getDate(updatedItem[item]);
+    dateFields.forEach(fieldName => {
+      // eslint-disable-next-line no-prototype-builtins
+      if (item.hasOwnProperty(fieldName)) {
+        item[fieldName] = this.convertToDate(item[fieldName]);
       }
     });
   }
@@ -282,10 +315,12 @@ class Cloner {
   upsertCurrent(eachItem, beforeEach, afterEach, collection, find) {
     return async(current) => {
       const srcItem = _.cloneDeep(current);
+
       if (this.options.apiSource) {
-        srcItem._id = new ObjectId(srcItem._id);
-        if (srcItem.project) {
-          srcItem.project = new ObjectId(srcItem.project);
+        srcItem._id = this.convertToObjectId(srcItem._id);
+        // eslint-disable-next-line no-prototype-builtins
+        if (srcItem.hasOwnProperty('project')) {
+          srcItem.project = this.convertToObjectId(srcItem.project);
         }
       }
 
@@ -294,15 +329,20 @@ class Cloner {
       }
 
       try {
-      // Create the item we will be inserting/updating.
-        const destItem = await this.findLast(`dest.${collection}`,
-          this.findQuery(this.options.apiSource? srcItem: current, find));
+        // Create the item we will be inserting/updating.
+        const destItem = await this.findLast(
+          `dest.${collection}`,
+          this.findQuery(
+            this.options.apiSource ? srcItem : current,
+            find
+          ));
         const updatedItem = {...destItem, ...(_.omit(srcItem, ['_id']))};
 
         // Call before handler and then update if it says we should.
         if (
           this.shouldClone(collection, srcItem) &&
-        await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false) {
+          await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false
+        ) {
           if (destItem) {
             if (this.options.apiSource) {
               this.convertApiObjectToDbRecord(updatedItem);
@@ -313,6 +353,7 @@ class Cloner {
           }
           else {
             updatedItem._id = srcItem._id;
+
             if (this.options.apiSource) {
               if (collection === 'projects') {
                 updatedItem.machineName = updatedItem.name;
@@ -345,10 +386,20 @@ class Cloner {
    * @param {*} find - The query to use to find the "equivalent" document in the destination database.
    */
   async upsertAll(collection, query, eachItem, beforeEach, afterEach, find = null) {
-    this.options.apiSource?
-      await this.connectToApi(collection, query,this.upsertCurrent(eachItem, beforeEach, afterEach, collection, find)):
-      // eslint-disable-next-line max-len
-      await this.each(`src.${collection}`, query, this.upsertCurrent(eachItem, beforeEach, afterEach, collection, find));
+    if (this.options.apiSource) {
+      await this.cloneFromApi(
+        collection,
+        query,
+        this.upsertCurrent(eachItem, beforeEach, afterEach, collection, find)
+      );
+    }
+    else {
+      await this.each(
+        `src.${collection}`,
+        query,
+        this.upsertCurrent(eachItem, beforeEach, afterEach, collection, find)
+      );
+    }
   }
 
   /**
@@ -463,6 +514,7 @@ class Cloner {
    */
   setCollection(form, srcProj, destProj) {
     const subsCollection = _.get(form, 'settings.collection');
+
     if (!subsCollection) {
       if (!this.options.apiSource) {
         this.src.submissions = this.src.ogSubmissions;
@@ -470,14 +522,18 @@ class Cloner {
       this.dest.submissions = this.dest.ogSubmissions;
       return;
     }
+
     console.log(`Using collection - ${subsCollection}`);
-    // eslint-disable-next-line max-len
+
     if (!this.options.apiSource) {
-      // eslint-disable-next-line max-len
-      this.src.submissions = srcProj && subsCollection ? this.src.db.collection(`${srcProj.name}_${subsCollection}`) : this.src.ogSubmissions;
+      this.src.submissions = srcProj && subsCollection
+        ? this.src.db.collection(`${srcProj.name}_${subsCollection}`)
+        : this.src.ogSubmissions;
     }
-    this.dest.submissions = destProj && subsCollection ?
-      this.dest.db.collection(`${destProj.name}_${subsCollection}`) : this.dest.ogSubmissions;
+
+    this.dest.submissions = destProj && subsCollection
+      ? this.dest.db.collection(`${destProj.name}_${subsCollection}`)
+      : this.dest.ogSubmissions;
   }
 
   /**
@@ -514,13 +570,9 @@ class Cloner {
   }
 
   /**
-   * Iterate through each document in a collection.
-   *
-   * @param {*} collection - The collection to iterate through.
-   * @param {*} query - The query to use to find the documents.
-   * @param {*} cb - The callback to call for each document.
+   * Based on DB collection name defines the API endpoint path.
+   * @param {*} collection - DB collection name.
    */
-
   getApiPath(collection) {
     switch (collection) {
     case 'projects':
@@ -545,7 +597,6 @@ class Cloner {
       return `${this.src}/form/${this.currentForm._id}/action`;
 
     case 'submissionrevisions':
-      // eslint-disable-next-line max-len
       return `${this.src}/form/${this.currentForm._id}/submission/${this.currentSubmission._id}/v`;
 
     default:
@@ -553,43 +604,58 @@ class Cloner {
     }
   }
 
-  getUrlPath(collection, query, skip) {
-    if (collection ==='projects') {
+  /**
+   * Based on DB collection name, DB query and skip parameter creates the URL for request.
+   * @param {String} collection - DB collection name.
+   * @param {Object} query - DB query object.
+   * @param {Number} skip - skip URL parameter.
+   */
+  getRequestUrl(collection, query, skip) {
+    if (collection === 'projects') {
       return this.getApiPath(collection);
     }
-    // eslint-disable-next-line max-len
-    const basePartUrl = `${this.getApiPath(collection)}?limit=${this.limit}&skip=${skip}`;
 
-    if (collection ==='submissions' && query.created) {
-      return `${basePartUrl}&created__gt=${new Date(query.created.$gt).getTime()}`;
+    const url = `${this.getApiPath(collection)}?limit=${this.limit}&skip=${skip}`;
+
+    if (collection === 'submissions' && query.created && query.created.$gt) {
+      return `${url}&created__gt=${this.convertToDate(query.created.$gt).getTime()}`;
     }
-    return basePartUrl;
+
+    return url;
   }
 
+  /**
+   * Does a request to the API, returns response data in Array format.
+   * @param {String} collection - DB collection name.
+   * @param {Object} query - DB query object.
+   * @param {Number} skip - skip URL parameter.
+   * @returns {Array}
+   */
   async fetchRecordsFromApi(collection, query, skip) {
-    const options = {
-      key: this.options.key,
-      noThrowOnError: true
-    };
-
-    const fetchWithHeaders = fetch(options);
-
-    const data = await fetchWithHeaders({
-      url: this.getUrlPath(collection, query, skip),
+    const res = await this.fetch({
+      url: this.getRequestUrl(collection, query, skip),
       method: 'GET',
       headers: this.requestHeaders
     });
 
-    if (data.ok || !data.ok && data.status === 416) {
-      return Array.isArray(data.body)? data.body: [data.body];
+    // If request was successful or if the API has already returned all the existing records
+    if (res.ok || (!res.ok && res.status === 416)) {
+      return Array.isArray(res.body) ? res.body : [res.body];
     }
     else {
-      console.error(`HTTP Error: ${data.status} ${data.statusText} ${data.url} \n ${JSON.stringify(data.body)}`);
+      console.error(`HTTP Error: ${res.status} ${res.statusText} ${res.url} \n ${JSON.stringify(res.body)}`);
       return;
     }
   }
 
-  async connectToApi(collection, query, cb) {
+  /**
+   * Gets records from the API and passes them to callback function.
+   * @param {String} collection - DB collection name.
+   * @param {Object} query - DB query object.
+   * @param {Function} cb - Callback to which each fetched record is passed.
+   * @returns {Array}
+   */
+  async cloneFromApi(collection, query, cb) {
     let skip = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -603,31 +669,35 @@ class Cloner {
         // eslint-disable-next-line callback-return
         await cb(record);
       }
-      if (collection ==='projects') {
+
+      // Fetch only one project
+      if (collection === 'projects') {
         break;
       }
+
       skip += this.limit;
     }
   }
 
   async connect() {
+    if (!this.srcPath) {
+      throw new Error('Source should be provided.');
+    }
+
     if (this.srcPath === this.mongoDest) {
       throw new Error('Source and destination databases cannot be the same.');
     }
 
-    if (this.srcPath && !this.options.apiSource) {
-      this.src = await this.connectDb(this.srcPath, 'src');
+    if (this.options.apiSource && !this.options.key) {
+      throw new Error('An API Key should be provided via --key option to clone from the API.');
     }
 
-    else if (this.options.key) {
-      this.src = this.srcPath;
-    }
-    else {
-      throw new Error('you need provide Source KEY');
-    }
+    this.src = this.options.apiSource
+      ? this.srcPath
+      : await this.connectDb(this.srcPath, 'src');
 
     // If there are no source projects, then we can assume we are cloning from OSS.
-    this.oss = this.options.apiSource? false: !(await this.src.projects.findOne({}));
+    this.oss = this.options.apiSource ? false : !(await this.src.projects.findOne({}));
 
     // Connect to the destination databases.
     if (this.mongoDest) {
@@ -692,7 +762,11 @@ class Cloner {
     const query = this.afterQuery({
       form: srcForm._id,
       project: srcForm.project
-    }, lastSubmission && lastSubmission.created ? this.getDate(lastSubmission.created).getTime() : null);
+    },
+    lastSubmission && lastSubmission.created
+      ? this.convertToDate(lastSubmission.created).getTime()
+      : null
+    );
 
     // Clone the submissions.
     await this.upsertAll('submissions', query, null, async(src, update) => {
@@ -732,17 +806,26 @@ class Cloner {
    * @param {ObjectId|string} destProjectId - The destination project id.
    */
   async getDestinationRoleId(srcId, destProjectId) {
-    const fetchWithHeaders = fetch({key: this.options.key});
-
     let role;
+
     if (this.options.apiSource) {
-      role = await fetchWithHeaders({
+      const roleRes = await this.fetch({
         url: `${this.src}/role/${srcId.toString()}`,
         headers: this.requestHeaders
       });
+
+      if (roleRes.ok) {
+        role = roleRes.body;
+      }
+      else {
+        console.error(`Failed to fetch role: ${roleRes.status} ${roleRes.statusText} ${roleRes.url}`);
+        return;
+      }
     }
-    const srcRole = this.options.apiSource? role.body:
-      await this.src.roles.findOne({_id: new ObjectId(srcId.toString())});
+    const srcRole = this.options.apiSource && role
+      ? role
+      : await this.src.roles.findOne({_id: this.convertToObjectId(srcId)});
+
     if (srcRole) {
       // eslint-disable-next-line max-len
       const destRole = await this.dest.roles.findOne({title: srcRole.title, project: new ObjectId(destProjectId.toString())});
@@ -976,18 +1059,27 @@ class Cloner {
       throw new Error('Destination project not found for this cloning operation.');
     }
     await this.cloneRoles(srcProject, destProject);
-    const fetchWithHeaders = fetch({key: this.options.key});
 
     let roles;
+
     if (this.options.apiSource) {
-      roles = await fetchWithHeaders({
+      const rolesRes = await this.fetch({
         url: `${this.src}/role`,
         headers: this.requestHeaders
       });
+
+      if (rolesRes.ok) {
+        roles = rolesRes.body;
+      }
+      else {
+        console.error(`Failed to fetch project roles: ${rolesRes.status} ${rolesRes.statusText} ${rolesRes.url}`);
+        return;
+      }
     }
 
-    this.srcRoles = this.options.apiSource? roles.body:
-      await this.src.roles.find(srcProject ? {project: srcProject._id} : {}).toArray();
+    this.srcRoles = this.options.apiSource && roles
+      ? roles
+      : await this.src.roles.find(srcProject ? {project: srcProject._id} : {}).toArray();
     this.destRoles = await this.dest.roles.find({project: destProject._id}).toArray();
     if (srcProject && destProject) {
       this.migrateFormAccess(srcProject, destProject);

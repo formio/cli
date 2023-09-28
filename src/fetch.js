@@ -37,12 +37,13 @@ module.exports = function(options = {}) {
         return response.json().then(data => {
           res.body = data;
 
-          if (noThrowOnError) {
-            return res;
-          }
           // response.status < 200 && response.status > 300
-          if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status} ${response.statusText} ${response.url} \n ${JSON.stringify(res.body)}`.red);
+          if (!response.ok && !noThrowOnError) {
+            throw new Error(
+              `HTTP Error: ${response.status} ${response.statusText} ${
+                response.url
+              } \n ${JSON.stringify(res.body)}`.red
+            );
           }
 
           return res;
@@ -52,8 +53,12 @@ module.exports = function(options = {}) {
         return response.text().then(data => {
           res.body = data;
           // response.status < 200 && response.status > 300
-          if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status} ${response.statusText} ${response.url} \n ${JSON.stringify(res.body)}`.red);
+          if (!response.ok && !noThrowOnError) {
+            throw new Error(
+              `HTTP Error: ${response.status} ${response.statusText} ${
+                response.url
+              } \n ${JSON.stringify(res.body)}`.red
+            );
           }
 
           return res;
