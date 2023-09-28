@@ -84,10 +84,6 @@
     fetch-ponyfill "^7.1.0"
     json-logic-js "^2.0.2"
 
-"@formio/keys@github:formio/keys":
-  version "1.0.0"
-  resolved "git+ssh://git@github.com/formio/keys.git#b9bb1017f9a8d64101ffd3316e6e4e7ba53a4f93"
-
 "@formio/lodash@0.0.9":
   version "0.0.9"
   resolved "https://registry.npmjs.org/@formio/lodash/-/lodash-0.0.9.tgz#60c57131e960aeb87194e3420c642c9d4ee07fae"
