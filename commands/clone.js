@@ -22,8 +22,10 @@ module.exports = function(program, next) {
     .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')
     .option('--dst-cert <destination_cert>', 'Allows you to provide the TLS certificate file for connections.')
-    .option('--server', 'Allows to recognize what is the source(server or db)')
+    .option('--api-source', 'Provide this if you clone from API source')
     .option('-k, --key [key]', 'The API Key to provide to the source API.')
+    .option('-l, --limit [limit]', 'Limits the amount of records fetched from the API at once (default - 1000)')
+
     .option(
       '--src-db-secret <source_db_secret>',
       'Source API DB_SECRET config (provide this if your project has encrypted settings of fields).'
