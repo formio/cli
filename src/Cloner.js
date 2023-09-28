@@ -286,7 +286,7 @@ class Cloner {
       return new ObjectId(value);
     }
 
-    throw new Error(`Can't convert to ObjectId ${value}`);
+    return null;
   }
 
   /**
@@ -919,7 +919,6 @@ class Cloner {
     process.stdout.write('   - Roles:');
     await this.upsertAll('roles', this.projectQuery(srcProject), null, (src, update) => {
       update.project = destProject._id;
-      update.__v = 0;
     }, null, (current) => {
       return {
         project: destProject._id,
