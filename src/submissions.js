@@ -1,8 +1,11 @@
 'use strict';
 var JSONStream = require('JSONStream');
+const path = require('path');
+
 var transform = require('stream-transform');
 var request = require('request');
-module.exports = function(options, next) {
+
+module.exports =  function(options, next) {
   var src = options.params[0];
   var eachSubmission = options.params[1];
 
@@ -23,7 +26,7 @@ module.exports = function(options, next) {
   }
 
   // Create the submission request.
-  var stream = request({
+  var stream =  request({
     method: 'GET',
     rejectUnauthorized: false,
     url: src + '/submission',
@@ -35,7 +38,7 @@ module.exports = function(options, next) {
   if (eachSubmission) {
     try {
       // Require the transformer.
-      eachSubmission = require(process.cwd() + '/' + eachSubmission);
+      eachSubmission = require(path.join(process.cwd(), eachSubmission));
     }
     catch (err) {
       console.log(err);
@@ -46,7 +49,7 @@ module.exports = function(options, next) {
     var index = 0;
     stream
       .pipe(JSONStream.parse('*'))
-      .pipe(transform(function(record, next) {
+      .pipe(transform(function(record) {
         eachSubmission(record, index++, options, next);
       }));
   }

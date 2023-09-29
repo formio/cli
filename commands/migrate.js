@@ -14,7 +14,7 @@ module.exports = function(program, next) {
     .option('--src-admin-key [key]', 'The Admin API Key to provide to the source form')
     .option('--dst-admin-key [key]', 'The Admin API Key to provide to the destination form')
     .option('--start-with [startWith]', 'Start the migration from a specific form. Useful to replay migrations.')
-    .option('--delete [delete]', 'Deletes all submissions in the destination from before the migration occurs.')
+    .option('--delete [delete]', 'Deletes all submissions in the destination form before the migration occurs.')
     .option('--delete-previous [deletePrevious]', 'Deletes previous submissions that have been migrated with the migrate script.')
     .option('--delete-after [deleteAfter]', 'Provides the ability to delete submissions created in the Source after the provided timestamp. The timestamp should be in the format of 2022-05-30T12:00:00.000Z. Use with delete-before to create a delete "window".')
     .option('--delete-before [deleteBefore]', 'Provides the ability to delete submissions created in the Before after the provided timestamp. The timestamp should be in the format of 2022-05-30T12:00:00.000Z.  Use with delete-after to create a delete "window".')
