@@ -18,6 +18,7 @@ const {
   formCopyChainDst,
   formDeployCheck
 } = require('./templates/test');
+const {createHmac} = require('crypto');
 
 module.exports = (template) => {
   describe('Create Template', function() {
@@ -29,21 +30,50 @@ module.exports = (template) => {
         template: formioProject
       };
 
-      const projectSrc = await request(template.appSrc)
-        .post('/project')
-        .set('x-admin-key', process.env.ADMIN_KEY)
-        .send(formioSettings)
-        .expect(201);
+      const formioApiSettings = {
+        title: 'Form.io',
+        name: 'formioApi',
+        plan: 'commercial',
+        template: formioProject,
+        settings: {
+          cors: '*',
+          appOrigin: template.appSrc,
+          keys: [
+            {
+              key: template.xToken,
+              name: 'key 1'
+            }
+          ]
+        }
+      };
+      try {
+        const projectSrc = await request(template.appSrc)
+          .post('/project')
+          .set('x-admin-key', process.env.ADMIN_KEY)
+          .send(formioSettings)
+          .expect(201);
 
-      template.src.project = projectSrc.body;
+        template.src.project = projectSrc.body;
 
-      const projectDst =  await request(template.appDst)
-        .post('/project')
-        .set('x-admin-key', process.env.ADMIN_KEY)
-        .send(formioSettings)
-        .expect(201);
+        const projectDst =  await request(template.appDst)
+          .post('/project')
+          .set('x-admin-key', process.env.ADMIN_KEY)
+          .send(formioSettings)
+          .expect(201);
 
-      template.dst.project = projectDst.body;
+        template.dst.project = projectDst.body;
+
+        const result = await request(template.appSrc)
+          .post('/project')
+          .set('x-admin-key', process.env.ADMIN_KEY)
+          .set('x-raw-data-access', createHmac('sha256', template.xToken).digest('hex'))
+          .send(formioApiSettings);
+
+        template.api.projectApi = result.body;
+      }
+      catch (err) {
+        console.log(err);
+      }
     });
     it('Create template src', (done) => {
       const createStageProject = (source, title, name)=>  function(cb) {
@@ -73,30 +103,43 @@ module.exports = (template) => {
           });
       };
 
-      const createForm = (source, direction, fixture)=>  function(cb) {
+      const createForm = (source, direction, fixture, api=false)=>  function(cb) {
         request(source)
-          .post('/project/'+ template[direction].project._id + '/form')
+          .post(`/project/${api? template.api.projectApi._id: template[direction].project._id}/form`)
           .set('x-admin-key', process.env.ADMIN_KEY)
           .send(fixture)
           .end(function(err, resForm) {
             if (err) {
               return cb(err);
             }
-            template[direction].forms[resForm.body.name] = resForm.body;
+            if (api) {
+              template.api.forms[resForm.body.name] = resForm.body;
+            }
+            else {
+              template[direction].forms[resForm.body.name] = resForm.body;
+            }
+
             cb();
           });
       };
 
-      const createFormSubmission = (source, textForm, fixture)=>  function(cb) {
+      const createFormSubmission = (source, textForm, fixture, api=false)=>  function(cb) {
         request(source)
-          .post('/project/'+ template.src.project._id + '/form/' + template.src.forms[textForm]._id +'/submission')
+          // eslint-disable-next-line max-len
+          .post( `/project/${api? template.api.projectApi._id: template.src.project._id}/form/${api? template.api.forms[textForm]._id:template.src.forms[textForm]._id}/submission`)
           .set('x-admin-key', process.env.ADMIN_KEY)
           .send(fixture)
           .end(function(err, resFormSubmissions) {
             if (err) {
               return cb(err);
             }
-            template.src.submission[textForm].push(resFormSubmissions.body);
+
+            if (api) {
+              template.api.submission[textForm].push(resFormSubmissions.body);
+            }
+            else {
+              template.src.submission[textForm].push(resFormSubmissions.body);
+            }
 
             cb();
           });
@@ -122,6 +165,12 @@ module.exports = (template) => {
             createForm(template.appSrc, 'src', textFormSrcResource),
             createForm(template.appSrc, 'src', formCopyChainSrc),
             createForm(template.appSrc, 'src', formDeployCheck),
+
+            createForm(template.appSrc, 'src', textFormFirstSrc, true),
+            createForm(template.appSrc, 'src', textFormSecondSrc, true),
+            createFormSubmission(template.appSrc, 'textForm1', submissionFirst, true ),
+            createFormSubmission(template.appSrc, 'textForm1', submissionSecond, true ),
+            createFormSubmission(template.appSrc, 'textForm2', submissionThird, true ),
 
           ], function(err) {
             if (err) {

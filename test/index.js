@@ -4,7 +4,9 @@ require('dotenv').config({path: 'test.env'});
 
 const template = {
   src: {forms: {}, submission: {textForm1: [], textForm2: [], textForm3: []}},
-  dst: {forms: {}}
+  dst: {forms: {}},
+  api: {forms: {}, submission: {textForm1: [], textForm2: []}},
+  xToken: 'D5NEdViqjuvuE3tj9LctJ5MBTSE32q'
 };
 
 template.appSrc = process.env.API_SRC;
@@ -24,6 +26,6 @@ describe('Start tests', () => {
     require('./migrate/migrate')(template);
     require('./copy/copy')(template);
     require('./deploy/deploy')(template);
-    require('./clone')();
+    require('./clone')(template);
   });
 });

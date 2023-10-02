@@ -30,17 +30,29 @@ const connectDb = async(uri) => {
   }
 };
 
-module.exports = (mongoSrc, mongoDest) => {
+module.exports = (mongoSrc= null, mongoDest=null) => {
   describe('', function() {
     it('Clear server Data',  function(done) {
       done();
     });
 
     before(async() => {
+      src= null;
+      dst= null;
       try {
-        src = await connectDb(mongoSrc);
-        dst = await connectDb(mongoDest);
+        if (mongoSrc) {
+          src = await connectDb(mongoSrc);
+        }
+
+        if (mongoDest) {
+          dst = await connectDb(mongoDest);
+        }
+
+        if (!mongoSrc && !mongoDest) {
+          throw new Error('You need to provide at least one database path to be cleaned');
+        }
       }
+
       catch (err) {
         console.log(err);
       }
@@ -53,23 +65,20 @@ module.exports = (mongoSrc, mongoDest) => {
           next();
         };
 
-        async.series([
-          async.apply(dropDocuments, src.forms),
-          async.apply(dropDocuments, src.actions),
-          async.apply(dropDocuments, src.roles),
-          async.apply(dropDocuments, src.projects),
-          async.apply(dropDocuments, src.submissions),
-          async.apply(dropDocuments, dst.forms),
-          async.apply(dropDocuments, dst.actions),
-          async.apply(dropDocuments, dst.roles),
-          async.apply(dropDocuments, dst.projects),
-          async.apply(dropDocuments, dst.submissions)
-        ], (err)=> {
-          if (err) {
-            done(err);
-          }
-          done();
-        });
+        const srcCollections = src? [src.forms, src.actions, src.roles, src.projects, src.submissions]:[];
+        const dstCollections = dst? [dst.forms, dst.actions, dst.roles, dst.projects, dst.submissions]:[];
+
+        const collectionsToClean = [...srcCollections, ...dstCollections];
+
+        async.series(
+          collectionsToClean.map(x=> {
+            return async.apply(dropDocuments, x);
+          }), (err)=> {
+            if (err) {
+              done(err);
+            }
+            done();
+          });
       };
       clearData();
     });
