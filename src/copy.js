@@ -21,7 +21,7 @@ module.exports = function(options, done) {
     return done('You must provide a destination.');
   }
 
-  var destForm = {};
+  var destForm = {components:[]};
   var sourceForms = src.split(',');
 
   async.series([
@@ -33,10 +33,12 @@ module.exports = function(options, done) {
 
       var copyComponents = function(form, cb) {
         if (options.full) {
-          destForm = _.omit(form, ['_id', '_vid', 'created', 'modified', 'machineName']);
+          const formPart = _.omit(form, ['_id', '_vid', 'created', 'modified', 'machineName']);
+          destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         else {
-          destForm = _.pick(form, ['title', 'components', 'tags', 'properties']);
+          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties']);
+          destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         return cb();
       };
@@ -45,7 +47,7 @@ module.exports = function(options, done) {
       async.eachSeries(sourceForms, function(src, cb) {
         fetch(options)({
           url: src
-        }).then(({ body: form }) => {
+        }).then(({body: form}) => {
           copyComponents(form, cb);
         }).catch(err => {
           console.log('Loading form ' + src + ' returned error: ' + err.message.red);
@@ -72,7 +74,7 @@ module.exports = function(options, done) {
 
       fetchWithHeaders({
         url: dest
-      }).then(({ body: form }) => {
+      }).then(({body: form}) => {
         if (form && form.components) {
           console.log('Updating existing ' + type);
           var updatedForm = _.assign(form, destForm);
@@ -80,7 +82,7 @@ module.exports = function(options, done) {
             url: dest,
             method: 'PUT',
             body: updatedForm
-          }).then(({ body: form }) => {
+          }).then(({body: form}) => {
             console.log('RESULT:' + JSON.stringify(form).green);
             next();
           }).catch(next);
@@ -117,15 +119,15 @@ module.exports = function(options, done) {
             url: projectUrl + '/form',
             method: 'POST',
             body: newForm
-          }).then(({ body: form }) => {
+          }).then(({body: form}) => {
             console.log('RESULT:' + JSON.stringify(form).green);
             next();
           }).catch(next);
         }
       })
-      .catch((err) => {
-        console.log(err);
-      });
+        .catch((err) => {
+          console.log(err);
+        });
     }
   ], function(err) {
     if (err) {

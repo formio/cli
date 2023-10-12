@@ -7,6 +7,7 @@ const transform = require('stream-transform');
 const request = require('request');
 const formTransform = require('./transforms/form');
 const fetch = require('./fetch');
+const path = require('path');
 
 module.exports = function(options, next) {
   let isProject = false;
@@ -73,7 +74,7 @@ module.exports = function(options, next) {
     else {
       try {
         // Require the transformer.
-        _transformer = require(process.cwd() + '/' + _transformer);
+        _transformer = require(path.join(process.cwd() + '/' + _transformer));
       }
       catch (err) {
         console.log(err);
@@ -129,7 +130,7 @@ module.exports = function(options, next) {
       const isFile = src.trim().endsWith('.csv');
 
       if (isFile) {
-        stream = fs.createReadStream(process.cwd() + '/' + _src).pipe(parse({
+        stream = fs.createReadStream(path.join(process.cwd(), '/', _src)).pipe(parse({
           ltrim: true,
           rtrim: true
         }));

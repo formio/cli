@@ -9,7 +9,9 @@ module.exports = {
     const submissions = [];
     const actions = [];
     const actionItems = [];
+
     await cloner.connect();
+
     const project = {
       title: `Test Project ${faker.string.alphanumeric(10)}`,
       name: `test${faker.string.alpha(10)}`,
@@ -19,7 +21,8 @@ module.exports = {
       project: null,
       deleted: null,
       created: new Date(),
-      modified: new Date()
+      modified: new Date(),
+      machineName: faker.string.alpha(10)
     };
     if (oss) {
       project._id = (await cloner.dest.projects.insertOne(project)).insertedId;
@@ -35,7 +38,8 @@ module.exports = {
         default: false,
         admin: false,
         created: new Date(),
-        modified: new Date()
+        modified: new Date(),
+        machineName: faker.string.alpha(10)
       };
       if (!oss) {
         role.project = project._id;
@@ -54,7 +58,8 @@ module.exports = {
           {type: 'textfield', key: 'a', label: 'A'},
           {type: 'textfield', key: 'b', label: 'B'},
           {type: 'textfield', key: 'c', label: 'C'}
-        ]
+        ],
+        machineName: faker.string.alpha(10)
       };
       if (!oss) {
         form.project = project._id;
@@ -69,7 +74,8 @@ module.exports = {
         priority: 10,
         form: form._id,
         deleted: null,
-        settings: {}
+        settings: {},
+        machineName: faker.string.alpha(10)
       };
       action._id = (await cloner.src.actions.insertOne(action)).insertedId;
       actions.push(action);
@@ -85,7 +91,8 @@ module.exports = {
             a: faker.string.alpha(10),
             b: faker.string.alpha(10),
             c: faker.string.alpha(10)
-          }
+          },
+          machineName: faker.string.alpha(10)
         };
         if (!oss) {
           submission.project = project._id;
