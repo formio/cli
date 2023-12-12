@@ -1,5 +1,6 @@
 'use strict';
 const fetch = require('node-fetch');
+const {Agent} = require('https');
 
 module.exports = function(options = {}) {
   const baseHeaders = {
@@ -25,6 +26,12 @@ module.exports = function(options = {}) {
       options.headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
     }
+
+    const httpsAgent = new Agent({
+      rejectUnauthorized: false,
+    });
+
+    options.agent = httpsAgent;
 
     return fetch(url, options).then(response => {
       const res = {
