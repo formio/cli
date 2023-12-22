@@ -1,6 +1,5 @@
 'use strict';
-const fetch = require('node-fetch');
-const {Agent} = require('https');
+const fetch = require('@formio/node-fetch-http-proxy');
 
 module.exports = function(options = {}) {
   const baseHeaders = {
@@ -20,18 +19,13 @@ module.exports = function(options = {}) {
     const options = {
       method: method,
       headers: {...baseHeaders, ...headers},
+      rejectUnauthorized: false,
     };
 
     if (body) {
       options.headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
     }
-
-    const httpsAgent = new Agent({
-      rejectUnauthorized: false,
-    });
-
-    options.agent = httpsAgent;
 
     return fetch(url, options).then(response => {
       const res = {
