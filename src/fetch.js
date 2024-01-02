@@ -1,5 +1,5 @@
 'use strict';
-const fetch = require('node-fetch');
+const fetch = require('@formio/node-fetch-http-proxy');
 
 module.exports = function(options = {}) {
   const baseHeaders = {
@@ -19,6 +19,7 @@ module.exports = function(options = {}) {
     const options = {
       method: method,
       headers: {...baseHeaders, ...headers},
+      rejectUnauthorized: false,
     };
 
     if (body) {
