@@ -22,13 +22,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Restore node modules from cache
-        uses: actions/cache@v3
+      - name: Installing dependencies
+        uses: borales/actions-yarn@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          cmd: install --frozen-lockfile
 
       - name: Test
         if: true
