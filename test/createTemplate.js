@@ -66,7 +66,7 @@ module.exports = (template) => {
         const result = await request(template.appSrc)
           .post('/project')
           .set('x-admin-key', process.env.ADMIN_KEY)
-          .set('x-raw-data-access', createHmac('sha256', template.xToken).digest('hex'))
+          // .set('x-raw-data-access', createHmac('sha256', template.xToken).digest('hex'))
           .send(formioApiSettings);
 
         template.api.projectApi = result.body;
