@@ -7,6 +7,17 @@ on:
 
 env:
   NODE_VERSION: 20.x
+  ADMIN_KEY: testAdminKey
+  DOCKER_API_SRC_PORT: 4001
+  DOCKER_API_DST_PORT: 4002
+  DOCKER_MONGO_SRC: mongodb://mongo:27017/cli-test-src
+  DOCKER_MONGO_DST: mongodb://mongo:27017/cli-test-dst
+  LICENSE_REMOTE: false
+  LICENSE_KEY: ${{ secrets.LICENSE_KEY }}
+  API_SRC: http://localhost:4001
+  API_DST: http://localhost:4002
+  MONGO_SRC: mongodb://localhost:27018/cli-test-src
+  MONGO_DST: mongodb://localhost:27018/cli-test-dst
 
 jobs:
   test:
