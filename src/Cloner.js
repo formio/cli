@@ -234,10 +234,12 @@ class Cloner {
     if (this.options.submissionsOnly && collection !== 'submissions') {
       return false;
     }
-    if (this.options.createdAfter && srcItem.created < parseInt(this.options.createdAfter, 10)) {
+    const srcCreated = (srcItem.created instanceof Date) ? srcItem.created.getTime() : parseInt(srcItem.created, 10);
+    if (this.options.createdAfter && srcCreated < parseInt(this.options.createdAfter, 10)) {
       return false;
     }
-    if (this.options.modifiedAfter && srcItem.modified < parseInt(this.options.modifiedAfter, 10)) {
+    const srcModified = (srcItem.created instanceof Date) ? srcItem.modified.getTime() : parseInt(srcItem.modified, 10);
+    if (this.options.modifiedAfter && srcModified < parseInt(this.options.modifiedAfter, 10)) {
       return false;
     }
     return true;
