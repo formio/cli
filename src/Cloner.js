@@ -238,7 +238,8 @@ class Cloner {
     if (this.options.createdAfter && srcCreated < parseInt(this.options.createdAfter, 10)) {
       return false;
     }
-    const srcModified = (srcItem.created instanceof Date) ? srcItem.modified.getTime() : parseInt(srcItem.modified, 10);
+    // eslint-disable-next-line max-len
+    const srcModified = (srcItem.modified instanceof Date) ? srcItem.modified.getTime() : parseInt(srcItem.modified, 10);
     if (this.options.modifiedAfter && srcModified < parseInt(this.options.modifiedAfter, 10)) {
       return false;
     }
