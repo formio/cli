@@ -13,6 +13,7 @@ module.exports = function(program, next) {
     .option('--dst-key [key]', 'The API Key to provide to the destination form')
     .option('--src-admin-key [key]', 'The Admin API Key to provide to the source form')
     .option('--dst-admin-key [key]', 'The Admin API Key to provide to the destination form')
+    .option('--pdf-migrate [pdfMigrate]', 'Whether or not to clone a PDF file to storage while migrating a PDF form', false)
     .option('--start-with [startWith]', 'Start the migration from a specific form. Useful to replay migrations.')
     .option('--delete [delete]', 'Deletes all submissions in the destination form before the migration occurs.')
     .option('--delete-previous [deletePrevious]', 'Deletes previous submissions that have been migrated with the migrate script.')
