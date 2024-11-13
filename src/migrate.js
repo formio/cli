@@ -9,7 +9,7 @@ const formTransform = require('./transforms/form');
 const fetch = require('./fetch');
 const path = require('path');
 const axios = require('axios');
-const {migratePdfData} = require('./utils');
+const {migratePdfFileForForm} = require('./utils');
 
 module.exports = function(options, next) {
   let isProject = false;
@@ -301,19 +301,21 @@ module.exports = function(options, next) {
       }).then(async({body}) => {
         const dstProject = _dest.replace(`/${body.path}`, '');
         try {
-          let basicBody = {
+          const destForm = {
             title: body.title,
+            display: body.display,
             path: body.path,
             name: body.name,
             type: body.type,
-            components: body.components
+            components: body.components,
+            settings: body.display === 'pdf' ? {pdf: body.settings.pdf} : {}
           };
-          if (body.display === 'pdf') {
-            basicBody = {...basicBody, settings: body.settings, display: body.display};
-            await migratePdfData(basicBody, options);
+
+          if (options.migratePdfFiles) {
+            await migratePdfFileForForm(destForm, options);
           }
 
-          await axios.post(`${dstProject}/form`, basicBody, {'headers': {...headers.dst}});
+          await axios.post(`${dstProject}/form`, destForm, {'headers': {...headers.dst}});
 
           // Migrate the data to this form.
           deleteThenMigrate();

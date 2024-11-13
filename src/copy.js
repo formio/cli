@@ -3,7 +3,7 @@
 var async = require('async');
 var _ = require('lodash');
 var fetch = require('./fetch');
-const {migratePdfData} = require('./utils');
+const {migratePdfFileForForm} = require('./utils');
 
 module.exports = function(options, done) {
   var type = options.params[0].trim();
@@ -38,13 +38,16 @@ module.exports = function(options, done) {
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         else {
-          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties']);
+          const formPart = _.pick(form,
+            ['title', 'components', 'tags', 'properties', 'display', ...(form.display === 'pdf' && 'settings.pdf')]
+          );
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
-        if (form.display === 'pdf') {
-          destForm = _.assign(destForm, {settings: form.settings, display: form.display});
-          await migratePdfData(destForm, options);
+
+        if (options.migratePdfFiles) {
+          await migratePdfFileForForm(destForm, options);
         }
+
         return cb();
       };
 

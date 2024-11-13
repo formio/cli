@@ -14,7 +14,11 @@ module.exports = function(program, next) {
     .option('--src-admin-key [key]', 'The Admin API Key to provide to the source form')
     .option('--dst-admin-key [key]', 'The Admin API Key to provide to the destination form')
     .option('--full', 'Will copy full form or resource structure')
-    .option('--pdf-migrate [pdfMigrate]', 'Whether or not to clone a PDF file to storage while copying a PDF form', false)
+    .option(
+      '--migrate-pdf-files [migratePdfFiles]',
+      'Pass this option if you want to migrate PDF files from source PDF server to the destination for PDF forms',
+      false
+    )
     .action(series([
       require('../src/authenticate')({
         src: 1,
