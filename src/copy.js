@@ -39,7 +39,7 @@ module.exports = function(options, done) {
         }
         else {
           const formPart = _.pick(form,
-            ['title', 'components', 'tags', 'properties', 'display', ...(form.display === 'pdf' && 'settings.pdf')]
+            ['title', 'components', 'tags', 'properties', 'display', form.display === 'pdf' && 'settings.pdf']
           );
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
@@ -55,8 +55,8 @@ module.exports = function(options, done) {
       async.eachSeries(sourceForms, function(src, cb) {
         fetch(options)({
           url: src
-        }).then(({body: form}) => {
-          copyComponents(form, cb);
+        }).then(async({body: form}) => {
+          await copyComponents(form, cb);
         }).catch(err => {
           console.log('Loading form ' + src + ' returned error: ' + err.message.red);
           cb(err);
