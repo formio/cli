@@ -60,7 +60,7 @@ module.exports = function(config) {
 
     // If the API Key is provided.
     if (options.key || options.adminKey || (options.srcAdminKey && options.dstAdminKey)) {
-      console.log('An API Key was provided. Authenticated as Project Owner.');
+      console.log('An API Key was provided for authentication');
       console.log('');
       return next(null);
     }
