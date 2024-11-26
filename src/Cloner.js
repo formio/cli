@@ -1033,6 +1033,9 @@ class Cloner {
       return;
     }
     const decryptedDstSettings = dest ? this.decrypt(this.options.dstDbSecret, dest['settings_encrypted'], true) : {};
+    if (!decryptedDstSettings) {
+      return;
+    }
     if (decryptedDstSettings.secret) {
       this.dstSecret = decryptedDstSettings.secret;
     }
