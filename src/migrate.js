@@ -308,7 +308,8 @@ module.exports = function(options, next) {
             path: body.path,
             name: body.name,
             type: body.type,
-            components: body.components
+            components: body.components,
+            settings: body.settings || {}
           }
         }, (err, resp) => {
           if (err) {

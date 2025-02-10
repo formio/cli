@@ -37,7 +37,7 @@ module.exports = function(options, done) {
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         else {
-          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties']);
+          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties', 'settings']);
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         return cb();
