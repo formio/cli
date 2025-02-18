@@ -308,7 +308,7 @@ module.exports = function(options, next) {
             name: body.name,
             type: body.type,
             components: body.components,
-            settings: body.display === 'pdf' ? {pdf: body.settings.pdf} : {}
+            settings: body.settings || {}
           };
 
           if (options.migratePdfFiles) {
