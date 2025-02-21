@@ -8,6 +8,8 @@ const request = require('request');
 const formTransform = require('./transforms/form');
 const fetch = require('./fetch');
 const path = require('path');
+const axios = require('axios');
+const {migratePdfFileForForm} = require('./utils');
 
 module.exports = function(options, next) {
   let isProject = false;
@@ -295,30 +297,33 @@ module.exports = function(options, next) {
       console.log(`Creating form ${_dest}`.green);
 
       fetch(options.srcOptions)({
-        url: _src
-      }).then(({body}) => {
+        url: _src,
+      }).then(async({body}) => {
         const dstProject = _dest.replace(`/${body.path}`, '');
-        request({
-          json: true,
-          method: 'POST',
-          url: `${dstProject}/form`,
-          headers: headers.dst,
-          body: {
+        try {
+          const destForm = {
             title: body.title,
+            display: body.display,
             path: body.path,
             name: body.name,
             type: body.type,
             components: body.components,
             settings: body.settings || {}
+          };
+
+          if (options.migratePdfFiles) {
+            await migratePdfFileForForm(destForm, options);
           }
-        }, (err, resp) => {
-          if (err) {
-            return done(err);
-          }
+
+          await axios.post(`${dstProject}/form`, destForm, {'headers': {...headers.dst}});
 
           // Migrate the data to this form.
           deleteThenMigrate();
-        });
+        }
+        catch (err) {
+          console.log(err);
+          return done(err);
+        }
       });
     });
   };
