@@ -3,6 +3,7 @@
 var async = require('async');
 var _ = require('lodash');
 var fetch = require('./fetch');
+const {migratePdfFileForForm} = require('./utils');
 
 module.exports = function(options, done) {
   var type = options.params[0].trim();
@@ -31,15 +32,20 @@ module.exports = function(options, done) {
         return next('Invalid form type given: ' + type);
       }
 
-      var copyComponents = function(form, cb) {
+      var copyComponents = async function(form, cb) {
         if (options.full) {
           const formPart = _.omit(form, ['_id', '_vid', 'created', 'modified', 'machineName']);
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
         else {
-          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties']);
+          const formPart = _.pick(form, ['title', 'components', 'tags', 'properties', 'settings', 'display']);
           destForm = _.assign(formPart, {components: [...formPart.components, ...destForm.components]});
         }
+
+        if (options.migratePdfFiles) {
+          await migratePdfFileForForm(destForm, options);
+        }
+
         return cb();
       };
 
