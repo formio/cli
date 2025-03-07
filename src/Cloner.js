@@ -32,6 +32,7 @@ class Cloner {
    * @param {*} options.includeSubmissionRevisions - Include submission revisions when cloning submissions.
    * @param {*} options.updateExistingSubmissions - Update existing submissions when found in the destination (performs a complete re-clone).
    * @param {*} options.forms - A comma-separated value of all the Form ID's you wish to clone. If included, then only the provided forms will be cloned.
+   * @param {*} options.exclude - A comma-separated value of all the Form ID's you wish to exclude from cloning.
    * @param {*} options.submissionsOnly - Only clone submissions.
    * @param {*} options.apiSource - Flag to define if we need to clone from an API.
    * @param {*} options.key - API Key to be used to authenticate in source.
@@ -48,6 +49,7 @@ class Cloner {
     this.src = null;
     this.dest = null;
     this.cloneState = {};
+    this.exclude = this.options.exclude ? this.options.exclude.split(',') : [];
 
     if (this.options.apiSource) {
       this.requestHeaders = {
@@ -230,7 +232,7 @@ class Cloner {
    * Determine if we should clone the given item.
    * @param {*} srcItem - The source item to check.
    */
-  shouldClone(collection, srcItem) {
+  shouldClone(collection, srcItem, updatedItem) {
     if (this.options.submissionsOnly && collection !== 'submissions') {
       return false;
     }
@@ -241,6 +243,15 @@ class Cloner {
     // eslint-disable-next-line max-len
     const srcModified = (srcItem.modified instanceof Date) ? srcItem.modified.getTime() : parseInt(srcItem.modified, 10);
     if (this.options.modifiedAfter && srcModified < parseInt(this.options.modifiedAfter, 10)) {
+      return false;
+    }
+
+    // Make sure to not re-clone the same item it if has not been modified.
+    // eslint-disable-next-line max-len
+    const updatedCreated = (updatedItem.created instanceof Date) ? updatedItem.created.getTime() : parseInt(updatedItem.created, 10);
+    // eslint-disable-next-line max-len
+    const updatedModified = (updatedItem.modified instanceof Date) ? updatedItem.modified.getTime() : parseInt(updatedItem.modified, 10);
+    if (srcCreated === updatedCreated && srcModified === updatedModified) {
       return false;
     }
     return true;
@@ -327,6 +338,10 @@ class Cloner {
         }
       }
 
+      if (collection === 'forms' && this.exclude.includes(srcItem._id.toString())) {
+        return;
+      }
+
       if (eachItem) {
         eachItem(srcItem);
       }
@@ -343,7 +358,7 @@ class Cloner {
 
         // Call before handler and then update if it says we should.
         if (
-          this.shouldClone(collection, srcItem) &&
+          this.shouldClone(collection, srcItem, updatedItem) &&
           await this.before(collection, beforeEach, srcItem, updatedItem, destItem) !== false
         ) {
           if (destItem) {
@@ -872,6 +887,8 @@ class Cloner {
         const srcId = update.settings.role;
         update.settings.role = await this.getDestinationRoleId(srcId, destForm.project);
       }
+    }, null, (current) => {
+      return {$or: [{_id: current._id}, {machineName: current.machineName}]};
     });
   }
 
@@ -886,7 +903,7 @@ class Cloner {
     let compsWithEncryptedData = [];
     await this.upsertAll('forms', this.formQuery(srcProject), (form) => {
       process.stdout.write('\n');
-      process.stdout.write(`- Form: ${form.title}`);
+      process.stdout.write(`- Form: ${form.title} (${form._id})`);
     }, async(src, update, dest) => {
       if (this.options.submissionsOnly) {
         return false;
