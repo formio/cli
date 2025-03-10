@@ -16,6 +16,7 @@ module.exports = function(program, next) {
     .option('-d, --dst-project <project_id>', 'The Destination project ID')
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
     .option('--forms <forms>', 'A comma-separated value of all the Form ID\'s you wish to clone. If included, then only the provided forms will be cloned.', false)
+    .option('--exclude <forms>', 'A comma-separated value of all the Form ID\'s you wish to exclude in the clone process.', false)
     .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning (No OSS).', true)
     .option('--update-existing-submissions', 'Update existing Submissions when found in the destination (slows down the clone process if set).', false)
     .option('--src-ca <source_ca>', 'The TLS certificate authority for the source mongo url')
