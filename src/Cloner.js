@@ -246,13 +246,15 @@ class Cloner {
       return false;
     }
 
-    // Make sure to not re-clone the same item it if has not been modified.
-    // eslint-disable-next-line max-len
-    const updatedCreated = (updatedItem.created instanceof Date) ? updatedItem.created.getTime() : parseInt(updatedItem.created, 10);
-    // eslint-disable-next-line max-len
-    const updatedModified = (updatedItem.modified instanceof Date) ? updatedItem.modified.getTime() : parseInt(updatedItem.modified, 10);
-    if (srcCreated === updatedCreated && srcModified === updatedModified) {
-      return false;
+    if (updatedItem._id) {
+      // Make sure to not re-clone the same item it if has not been modified.
+      // eslint-disable-next-line max-len
+      const updatedCreated = (updatedItem.created instanceof Date) ? updatedItem.created.getTime() : parseInt(updatedItem.created, 10);
+      // eslint-disable-next-line max-len
+      const updatedModified = (updatedItem.modified instanceof Date) ? updatedItem.modified.getTime() : parseInt(updatedItem.modified, 10);
+      if (srcCreated === updatedCreated && srcModified === updatedModified) {
+        return false;
+      }
     }
     return true;
   }
@@ -425,9 +427,9 @@ class Cloner {
    * @param {*} query - The default query to decorate.
    * @returns - The decorated query.
    */
-  query(query) {
+  query(query, includeAll = false) {
     let newQuery = _.cloneDeep(query);
-    if (!this.options.all) {
+    if (!this.options.all && !includeAll) {
       newQuery.deleted = {$eq: null};
     }
     return newQuery;
@@ -452,16 +454,18 @@ class Cloner {
    * @param {*} query - The default query to decorate.
    * @returns - The decorated query.
    */
-  itemQuery(query) {
+  itemQuery(query, includeAll = false) {
     let newQuery = _.cloneDeep(query);
     if (this.options.deletedAfter) {
-      newQuery['$or'] = [
-        {deleted: {$eq: null}},
-        {deleted: {$gt: new Date(parseInt(this.options.deletedAfter, 10))}}
-      ];
+      if (!includeAll) {
+        newQuery['$or'] = [
+          {deleted: {$eq: null}},
+          {deleted: {$gt: new Date(parseInt(this.options.deletedAfter, 10))}}
+        ];
+      }
     }
     else {
-      newQuery = this.query(newQuery);
+      newQuery = this.query(newQuery, includeAll);
     }
     // If it's OSS, then project would be undefined
     // eslint-disable-next-line no-prototype-builtins
@@ -475,8 +479,8 @@ class Cloner {
    * Adding a query for created and modified dates.
    * @param {*} query - The default query to decorate.
    */
-  afterQuery(query, createdAfter, modifiedAfter) {
-    const newQuery = this.itemQuery(query);
+  afterQuery(query, createdAfter, modifiedAfter, includeAll = false) {
+    const newQuery = this.itemQuery(query, includeAll);
     createdAfter = createdAfter || this.options.createdAfter;
     modifiedAfter = modifiedAfter || this.options.modifiedAfter;
     if (createdAfter) {
