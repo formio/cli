@@ -123,7 +123,7 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
    formio deploy [src] [dst]
    ```
 
-   You can deploy a project on a paid plan on form.io to a hosted server with this command. Specify the source and destination servers and the project will be created or updated on the destination server.
+   You can deploy a project on a paid plan on form.io to a hosted server with this command or deploy a project from an open source server to an enterprise project. Specify the source and destination servers and the project will be created or updated on the destination server.
 
    Examples:
 
@@ -136,9 +136,16 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
 
    // Projects can also be referred to with their project id which will need to be looked up.
    formio deploy https://form.io/project/{projectId} http://localhost:3000/project/{projectId}
+   
+   // Forms and Resources from an open source server can be deployed to an enterprise project by using the following command
+   // This will copy all your forms and resources from the open source formio server to the enterprise project
+   formio deploy <openSourceServerDomain> <enterpriseServerDomain>/<projectAlias> --src-key <openSourceServerX-Token> --dst-key <enterpriseServerX-Token>
+   formio deploy http://localhost:3001 http://localhost:3000/pfcelycsrkqjccq --src-key 123 --dst-key 456 
    ```
 
-   Each server will require authentication so you will be asked twice, once for the source and once for the destination. These can also be specified with --src-username, --src-password, --dst-username, --dst-password.
+   Each server will require authentication so you will need to add an API Key to each of the projects.  
+   Documentation on how to do that can be found here: https://help.form.io/userguide/projects/project-settings#api-settings  
+   For adding an API Key to the open source server you will need to set the environment variable API_KEYS. You can view our formio README if you need help on how to do this https://github.com/formio/formio/blob/master/README.md
 
 
 ### Copy
