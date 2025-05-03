@@ -6,7 +6,6 @@ on:
     - '*' # This will make sure all push events on any branch triggers this workflow.
 
 env:
-  NODE_VERSION: 20.x
   ADMIN_KEY: testAdminKey
   DOCKER_API_SRC_PORT: 4001
   DOCKER_API_DST_PORT: 4002
@@ -22,15 +21,18 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
     steps:
       - run: echo "Triggered by ${{ github.event_name }} event."
       - name: Check out repository code ${{ github.repository }} on ${{ github.ref }}
         uses: actions/checkout@v3
 
-      - name: Set up Node.js ${{ env.NODE_VERSION }}
+      - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v3
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Installing dependencies
