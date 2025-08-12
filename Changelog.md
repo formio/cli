@@ -1,3 +1,14 @@
+## 2.3.2
+### Changed
+ - Fixing the cloner to not skip if the destination item does not exist
+
+## 2.3.1
+### Changed
+ - FIO-7615: Add option to migrate pdf files to copy and migrate commands
+ - FIO-7554: Remove successful authentication message appeared before actual auth try
+ - FIO-8319: Add settings into copying and migration forms
+ - Fixing the compaison for dates
+
 ## 2.3.0
 ### Changed
  - Official Release
