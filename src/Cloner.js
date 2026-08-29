@@ -905,6 +905,10 @@ class Cloner {
     process.stdout.write('\n');
     process.stdout.write('   - Forms:');
     let compsWithEncryptedData = [];
+    let started = true;
+    if (this.options.startWith) {
+      started = false;
+    }
     await this.upsertAll('forms', this.formQuery(srcProject), (form) => {
       process.stdout.write('\n');
       process.stdout.write(`- Form: ${form.title} (${form._id})`);
@@ -912,7 +916,6 @@ class Cloner {
       if (this.options.submissionsOnly) {
         return false;
       }
-
       await eachComponentAsync(update.components, async(component, path) => {
         if (component.encrypted) {
           compsWithEncryptedData.push(path);
@@ -923,6 +926,12 @@ class Cloner {
       update.project = destProject._id;
       this.migrateFormAccess(src, update);
     }, async(srcForm, destForm) => {
+      if (!started && this.options.startWith && srcForm._id.toString() === this.options.startWith) {
+        started = true;
+      }
+      if (!started) {
+        return false;
+      }
       if (this.options.deleteSubmissions) {
         console.log(`Deleting submissions from ${destForm.title}`);
         await this.dest.submissions.deleteMany(this.itemQuery({
