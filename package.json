@@ -41,7 +41,7 @@
     "universal-analytics": "^0.4.23"
   },
   "devDependencies": {
-    "@faker-js/faker": "^8.0.2",
+    "@faker-js/faker": "^10.5.0",
     "chance": "^1.1.8",
     "eslint": "^7.25.0",
     "eslint-config-formio": "^1.1.4",
