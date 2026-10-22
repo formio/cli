@@ -50,8 +50,8 @@ function run(...args) {
     program.configureOutput({writeOut: () => {}, writeErr: () => {}});
     require(path.join(root, 'commands/commands'))(program, (err) => (err ? reject(err) : resolve()));
     program.parseAsync(['node', 'formio', ...args]).then(() => {
-      // The clone command is not run through a series, so it is done once the action is.
-      if (args[0] === 'clone') {
+      // The clone and rekey commands are not run through a series, so they are done once the action is.
+      if (['clone', 'rekey'].includes(args[0])) {
         resolve();
       }
     }, reject);
@@ -70,6 +70,9 @@ describe('Command line', function() {
     stub('src/submissions.js', step('submissions'));
     stub('src/clone.js', async(source, destination, options) => {
       calls.push({name: 'clone', source, destination, options});
+    });
+    stub('src/rekey.js', async(mongoUrl, options) => {
+      calls.push({name: 'rekey', mongoUrl, options});
     });
   });
 
@@ -124,6 +127,45 @@ describe('Command line', function() {
 
     it('Should require a source and a destination', async function() {
       await assert.rejects(() => run('clone', 'mongodb://src'), /missing required argument/);
+    });
+  });
+
+  describe('rekey', function() {
+    it('Should hand every option to the re-key', async function() {
+      await run('rekey', 'mongodb://db',
+        '--new-db-secret', 'new',
+        '--old-db-secret', 'old1',
+        '--old-db-secret', 'old2',
+        '--project', 'aaa,bbb',
+        '--dry-run',
+        '--no-submission-revisions',
+        '--batch-size', '50',
+        '--ca', 'ca.pem',
+        '--cert', 'cert.pem');
+
+      assert.equal(calls.length, 1);
+      const {mongoUrl, options} = calls[0];
+      assert.equal(mongoUrl, 'mongodb://db');
+      assert.equal(options.newDbSecret, 'new');
+      assert.deepEqual(options.oldDbSecret, ['old1', 'old2']);
+      assert.equal(options.project, 'aaa,bbb');
+      assert.equal(options.dryRun, true);
+      assert.equal(options.submissionRevisions, false);
+      assert.equal(options.batchSize, '50');
+      assert.equal(options.ca, 'ca.pem');
+      assert.equal(options.cert, 'cert.pem');
+    });
+
+    it('Should use the defaults when no options are given', async function() {
+      await run('rekey', 'mongodb://db', '--new-db-secret', 'new');
+      const {options} = calls[0];
+      assert.deepEqual(options.oldDbSecret, []);
+      assert.equal(options.dryRun, false);
+      assert.equal(options.submissionRevisions, true);
+    });
+
+    it('Should require the new secret', async function() {
+      await assert.rejects(() => run('rekey', 'mongodb://db'), /required option '--new-db-secret <secret>'/);
     });
   });
 
@@ -208,12 +250,16 @@ describe('Command line', function() {
       assert.match(formio('copy', '--help'), /--full/);
       assert.match(formio('migrate', '--help'), /--delete-before/);
       assert.match(formio('submissions', '--help'), /--admin-key/);
+      assert.match(formio('rekey', '--help'), /--old-db-secret/);
     });
   });
 
   describe('modules', function() {
     it('Should load every command implementation', function() {
-      for (const file of ['src/migrate.js', 'src/submissions.js', 'src/copy.js', 'src/deploy.js', 'src/clone.js']) {
+      const files = [
+        'src/migrate.js', 'src/submissions.js', 'src/copy.js', 'src/deploy.js', 'src/clone.js', 'src/rekey.js'
+      ];
+      for (const file of files) {
         const resolved = require.resolve(path.join(root, file));
         const cached = require.cache[resolved];
         delete require.cache[resolved];
