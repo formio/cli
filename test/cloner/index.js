@@ -18,4 +18,5 @@ describe('Cloner', function() {
   require('./api');
   require('./operations');
   require('./progress');
+  require('./rekey');
 });
