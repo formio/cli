@@ -4,9 +4,10 @@ module.exports = function(program, next) {
   program
     .command('clone <source> <destination>')
     .description('Clone a database (project) from one place to another.')
-    .option('--deleted-after [timestamp]', 'Only clone items deleted after the provided UNIX timestamp (in milliseconds).')
+    // eslint-disable-next-line max-len
+    .option('--deleted-after [timestamp]', 'In addition to the items that are not deleted, also clone items deleted after the provided UNIX timestamp (in milliseconds).')
     .option('--created-after [timestamp]', 'Only clone items created after the provided UNIX timestamp (in milliseconds).')
-    .option('--modified-after [timestamp]', 'Only clone items modified after the provided UNIX timestamp.')
+    .option('--modified-after [timestamp]', 'Only clone items modified after the provided UNIX timestamp (in milliseconds).')
     .option('-a, --all', 'Include All items (including deleted items', false)
     .option('-o, --submissions-only', 'Only clone the submissions within a project', false)
     .option('--include-form-revisions', 'Include all form revisions', false)
@@ -17,15 +18,24 @@ module.exports = function(program, next) {
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
     .option('--forms <forms>', 'A comma-separated value of all the Form ID\'s you wish to clone. If included, then only the provided forms will be cloned.', false)
     .option('--exclude <forms>', 'A comma-separated value of all the Form ID\'s you wish to exclude in the clone process.', false)
-    .option('-u, --update-existing', 'Update existing Projects and Forms instead of cloning (No OSS).', true)
+    .option('-u, --update-existing', 'Update existing Projects and Forms that have changed in the source (default).', true)
+    .option('--no-update-existing', 'Leave the Projects and Forms that already exist in the destination untouched.')
     .option('--update-existing-submissions', 'Update existing Submissions when found in the destination (slows down the clone process if set).', false)
     .option('--src-ca <source_ca>', 'The TLS certificate authority for the source mongo url')
-    .option('--src-cert <source_cert>', 'Allows you to provide the TLS certificate file for connections.')
+    .option('--src-cert <source_cert>', 'The TLS certificate key file for the source mongo connection.')
     .option('--dst-ca <destination_ca>', 'The TLS certificate authority for the destination mongo url')
-    .option('--dst-cert <destination_cert>', 'Allows you to provide the TLS certificate file for connections.')
+    .option('--dst-cert <destination_cert>', 'The TLS certificate key file for the destination mongo connection.')
     .option('--api-source', 'Provide this if you clone from API source')
     .option('-k, --key [key]', 'The API Key to provide to the source API.')
     .option('-l, --limit [limit]', 'Limits the amount of records fetched from the API at once (default - 1000)')
+    // eslint-disable-next-line max-len
+    .option('--dry-run', 'Change nothing. Compare the source against the destination and report how much is missing or out of date.', false)
+    // eslint-disable-next-line max-len
+    .option('--extra', 'With --dry-run, list every affected submission id, including the ones only the destination has.', false)
+    // eslint-disable-next-line max-len
+    .option('--batch-size <size>', 'The number of documents written to the destination at a time, and how often the clone state is saved (default - 1000).')
+    // eslint-disable-next-line max-len
+    .option('--max-batch-bytes <bytes>', 'How many bytes of documents the clone holds in memory before writing them out (default - 8388608). Lower this if the submissions carry large files.')
 
     .option(
       '--src-db-secret <source_db_secret>',

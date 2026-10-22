@@ -7,3 +7,10 @@ node_modules
 .vscode/launch.json
 npm-debug.log
 test/docker/data
+# Yarn 4 (Corepack). The cache and install state are local; the lockfile is committed.
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions

@@ -6,7 +6,7 @@ on:
     - '*' # This will make sure all push events on any branch triggers this workflow.
 
 env:
-  NODE_VERSION: 20.x
+  NODE_VERSION: 22.x
   ADMIN_KEY: testAdminKey
   DOCKER_API_SRC_PORT: 4001
   DOCKER_API_DST_PORT: 4002
@@ -31,15 +31,14 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+
+      # Corepack provides the Yarn version pinned by the packageManager field of package.json.
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Installing dependencies
-        uses: borales/actions-yarn@v4
-        with:
-          cmd: install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Test
         if: true
-        uses: borales/actions-yarn@v4
-        with:
-          cmd: test
+        run: yarn test
