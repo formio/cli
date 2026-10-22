@@ -609,6 +609,38 @@ describe('Cloner units', function() {
       assert.equal(instance.src.submissions.name, 'a_custom');
       assert.equal(instance.dest.submissions.name, 'b_custom');
     });
+
+    it('Should name custom collections, and their revisions, the way the server does', async function() {
+      const instance = bare({});
+      instance.writeBuffer = {};
+      instance.cloneState = {};
+      instance.pendingState = {};
+      const defaults = () => ({
+        db: database(),
+        ogSubmissions: {name: 'submissions'},
+        ogSubmissionRevisions: {name: 'submissionrevisions'}
+      });
+      instance.src = defaults();
+      instance.dest = defaults();
+
+      // The server strips everything but letters and digits from both names.
+      await quiet(() => instance.setCollection(
+        {settings: {collection: 'custom-records'}},
+        {name: 'my-source'},
+        {name: 'my_destination.v2'}
+      ));
+      assert.equal(instance.src.submissions.name, 'mysource_customrecords');
+      assert.equal(instance.src.submissionrevisions.name, 'mysource_customrecords_revisions');
+      assert.equal(instance.dest.submissions.name, 'mydestinationv2_customrecords');
+      assert.equal(instance.dest.submissionrevisions.name, 'mydestinationv2_customrecords_revisions');
+
+      // The next form without a collection of its own goes back to the default ones.
+      await quiet(() => instance.setCollection({settings: {}}, {name: 'my-source'}, {name: 'my_destination.v2'}));
+      assert.equal(instance.src.submissions.name, 'submissions');
+      assert.equal(instance.src.submissionrevisions.name, 'submissionrevisions');
+      assert.equal(instance.dest.submissions.name, 'submissions');
+      assert.equal(instance.dest.submissionrevisions.name, 'submissionrevisions');
+    });
   });
 
   describe('roles and access', function() {
