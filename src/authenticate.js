@@ -106,7 +106,7 @@ module.exports = function(config) {
     async.series([
       // Source authentication.
       function(next) {
-        if (!config || !config.hasOwnProperty('src')) {
+        if (!config || !Object.prototype.hasOwnProperty.call(config, 'src')) {
           return next();
         }
 

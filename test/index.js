@@ -1,6 +1,6 @@
 /* globals describe, before */
 'use strict';
-require('dotenv').config({path: 'test.env'});
+require('dotenv').config({path: 'test.env', quiet: true});
 
 const template = {
   src: {forms: {}, submission: {textForm1: [], textForm2: [], textForm3: []}},

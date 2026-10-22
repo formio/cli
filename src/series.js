@@ -4,9 +4,10 @@ var async = require('async');
 var _ = require('lodash');
 module.exports = function(series, next) {
   return function() {
-    // The action arguments.
+    // The action arguments. Commander passes the arguments, then the options, then the command.
     var args = Array.prototype.slice.call(arguments);
-    var options = args.pop();
+    var command = args.pop();
+    var options = (command && typeof command.opts === 'function') ? args.pop() : command;
     options.params = args;
     var actionSeries = [];
     _.each(series, function(action) {

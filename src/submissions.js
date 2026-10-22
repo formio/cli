@@ -2,7 +2,7 @@
 var JSONStream = require('JSONStream');
 const path = require('path');
 
-var transform = require('stream-transform');
+var {transform} = require('stream-transform');
 var request = require('request');
 
 module.exports =  function(options, next) {

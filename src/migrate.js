@@ -1,9 +1,9 @@
 'use strict';
 const fs = require('fs');
 const async = require('async');
-const parse = require('csv-parse');
+const {parse} = require('csv-parse');
 const JSONStream = require('JSONStream');
-const transform = require('stream-transform');
+const {transform} = require('stream-transform');
 const request = require('request');
 const formTransform = require('./transforms/form');
 const fetch = require('./fetch');
@@ -232,9 +232,11 @@ module.exports = function(options, next) {
         }
         const deleteQuery = {select: '_id', limit: '10000000'};
         if (options.deleteBefore) {
+          // eslint-disable-next-line camelcase
           deleteQuery.created__lt = options.deleteBefore;
         }
         if (options.deleteAfter) {
+          // eslint-disable-next-line camelcase
           deleteQuery.created__gt = options.deleteAfter;
         }
         request({

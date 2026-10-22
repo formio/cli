@@ -8,10 +8,7 @@ let src, dst;
 const connectDb = async(uri) => {
   try {
     console.log(`Connecting to ${uri}\n`);
-    const client = new MongoClient(uri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
+    const client = new MongoClient(uri);
     await client.connect();
     const db = await client.db();
     console.log(`Succesfully connected to ${uri}`);
@@ -26,7 +23,7 @@ const connectDb = async(uri) => {
     };
   }
   catch (err) {
-    throw new Error(`Could not connect to database ${uri}: ${err.message}`);
+    throw new Error(`Could not connect to database ${uri}: ${err.message}`, {cause: err});
   }
 };
 

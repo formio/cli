@@ -70,7 +70,7 @@ module.exports = function(options, done) {
     // Copy the form.
     function(next) {
       console.log('Saving components to destination ' + type + ' ' + dest);
-      var parts = dest.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
+      var parts = dest.match(/^(http[s]?:\/\/)([^/]+)\/(.*)/);
       if (parts.length < 4) {
         return next('Invalid destination: Must contain a ' + type + ' path');
       }
@@ -94,7 +94,7 @@ module.exports = function(options, done) {
           }).catch(next);
         }
         else {
-          var name = '';
+          var name;
           var projectUrl = parts[1] + parts[2];
           if (parts[2].match(/form\.io$/)) {
             name = parts[3];
@@ -107,7 +107,7 @@ module.exports = function(options, done) {
               name = formPath.join('/').trim();
             }
             else {
-              parts = src.match(/^(http[s]?:\/\/)([^\/]+)\/(.*)/);
+              parts = src.match(/^(http[s]?:\/\/)([^/]+)\/(.*)/);
               formPath = parts[3].split('/');
               formPath.shift();
               name = formPath.join('/').trim();

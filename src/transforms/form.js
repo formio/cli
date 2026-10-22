@@ -1,3 +1,5 @@
+'use strict';
+
 module.exports = function(record, next) {
   var metadata = record.metadata || {};
   metadata.from = record._id;

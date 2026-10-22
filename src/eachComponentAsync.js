@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * Iterate through each component within a form.
  *
@@ -13,7 +15,7 @@
  *   The parent object.
  */
 
-const eachComponentAsync = async (components, fn, includeAll, path = '', parent) => {
+const eachComponentAsync = async(components, fn, includeAll, path = '', parent) => {
   if (!components || !components.length || !fn) {
     return;
   }
@@ -85,6 +87,6 @@ const eachComponentAsync = async (components, fn, includeAll, path = '', parent)
       }
     }
   }
-}
+};
 
-module.exports = { eachComponentAsync };
+module.exports = {eachComponentAsync};

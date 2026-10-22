@@ -1,3 +1,5 @@
+'use strict';
+
 /**
  * This is an example of what a transform would look like.
  * @param record
