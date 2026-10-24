@@ -4,9 +4,9 @@
   "description": "The Form.io Command Line Interface application.",
   "main": "index.js",
   "scripts": {
-    "test": "yarn test:cli && cd ./test/docker && docker-compose up -d && cd ../.. && yarn mocha ./test/index -b -t 60000 --exit && cd ./test/docker && docker-compose down",
+    "test": "yarn test:cli && cd ./test/docker && docker compose up -d && cd ../.. && yarn mocha ./test/index -b -t 60000 --exit && cd ./test/docker && docker compose down",
     "test:cli": "mocha ./test/cli/index.js --exit",
-    "test:cloner": "cd ./test/docker && docker-compose up -d mongo && cd ../.. && yarn mocha ./test/cloner/index.js -t 60000 --exit",
+    "test:cloner": "cd ./test/docker && docker compose up -d mongo && cd ../.. && yarn mocha ./test/cloner/index.js -t 60000 --exit",
     "lint": "eslint ."
   },
   "author": "",
