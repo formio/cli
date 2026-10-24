@@ -45,3 +45,9 @@ jobs:
       - name: Test
         if: true
         run: yarn test
+
+      # The API servers only answer the tests with a status code, so their own logs explain a failure.
+      - name: API server logs
+        if: failure()
+        working-directory: test/docker
+        run: docker compose logs --no-color api-server-1 api-server-2
