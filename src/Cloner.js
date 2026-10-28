@@ -9,6 +9,32 @@ const {eachComponentAsync}  = require('./eachComponentAsync');
 const {createHmac} = require('node:crypto');
 const fetch = require('./fetch');
 
+// Same key/IV derivation as the removed crypto.createCipher (OpenSSL EVP_BytesToKey, MD5),
+// so data stays compatible with formio-server.
+function deriveKeyAndIv(password) {
+  const keyLength = 32;
+  const ivLength = 16;
+  const passwordBuffer = Buffer.from(password, 'utf-8');
+  const blocks = [];
+  let currentHash = Buffer.alloc(0);
+  let bytesGenerated = 0;
+
+  while (bytesGenerated < keyLength + ivLength) {
+    const hash = crypto.createHash('md5');
+    hash.update(currentHash);
+    hash.update(passwordBuffer);
+    currentHash = hash.digest();
+    blocks.push(currentHash);
+    bytesGenerated += currentHash.length;
+  }
+
+  const derivedBytes = Buffer.concat(blocks, keyLength + ivLength);
+  return {
+    key: derivedBytes.subarray(0, keyLength),
+    iv: derivedBytes.subarray(keyLength)
+  };
+}
+
 class Cloner {
   /**
    * @param {*} srcPath - The source connection string.
@@ -93,7 +119,8 @@ class Cloner {
     const salt = nosalt ? '' : keygenerator._({
       length: this.defaultSaltLength
     });
-    const cipher = crypto.createCipher('aes-256-cbc', secret);
+    const {key, iv} = deriveKeyAndIv(secret);
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     const decryptedJSON = JSON.stringify(rawData) + salt;
     return Buffer.concat([
       cipher.update(decryptedJSON),
@@ -115,7 +142,8 @@ class Cloner {
     let data = {};
     try {
       const buffer = Buffer.isBuffer(cipherbuffer) ? cipherbuffer : cipherbuffer.buffer;
-      const decipher = crypto.createDecipher('aes-256-cbc', secret);
+      const {key, iv} = deriveKeyAndIv(secret);
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
       const decryptedJSON = Buffer.concat([
         decipher.update(buffer), // Buffer contains encrypted utf8
         decipher.final()

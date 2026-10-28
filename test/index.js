@@ -21,6 +21,8 @@ describe('Start tests', () => {
   require('./clearData')(process.env.MONGO_SRC, process.env.MONGO_DST);
   require('./createTemplate')(template);
 
+  require('./encryption');
+
   describe('CLI commands', () => {
     require('./submissions/submission')(template);
     require('./migrate/migrate')(template);
