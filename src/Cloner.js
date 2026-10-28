@@ -506,6 +506,7 @@ class Cloner {
       .map((doc) => doc._id);
     const needed = new Set(wanted.map((id) => id.toString()));
     let fetched = new Map();
+    let requested = new Set();
     let next = 0;
 
     return async(projected) => {
@@ -514,10 +515,13 @@ class Cloner {
         // Nothing will be written for this one, so its data is never read.
         return projected;
       }
-      if (!fetched.has(key)) {
+      // A document of the current group that did not come back has vanished. That is not a reason
+      // to fetch the next group, which would throw away the rest of this one.
+      if (!requested.has(key)) {
         const size = Math.max(1, Math.min(this.fullFetchSize || 50, wanted.length - next));
         const ids = wanted.slice(next, next + size);
         next += ids.length;
+        requested = new Set(ids.map((id) => id.toString()));
         fetched = new Map();
         let bytes = 0;
         const docs = await _.get(this, collection).find({_id: {$in: ids}}).toArray();
@@ -1728,8 +1732,17 @@ class Cloner {
     // it checks the destination for each of them and does not start from the last one cloned.
     const compareAll = this.options.updateExistingSubmissions || this.dryRun;
 
+    // A previous clone that was interrupted, or lost some of these submissions, left a resume point
+    // or a retry marker. The newest submission in the destination says nothing about the older ones
+    // that were never written, so the resume point alone decides where to start. The ones that were
+    // written already are not an error: they are simply not inserted again.
+    const stateKey = `src.submissions:${srcForm._id}`;
+    const retryKey = `retry.submissions:${srcForm._id}`;
+    const resuming = !!(this.cloneState[stateKey] || this.cloneState[retryKey]);
+    const failuresBefore = this.writeFailures + this.documentFailures;
+
     // Determine the last one cloned, and ensure that we only fetch submissions after that date.
-    const lastSubmission = compareAll ? null : await this.findLast('dest.submissions', {
+    const lastSubmission = (compareAll || resuming) ? null : await this.findLast('dest.submissions', {
       form: destForm._id,
       project: destForm.project
     });
@@ -1764,6 +1777,17 @@ class Cloner {
       label: '      - Submissions:',
       count: true
     });
+
+    if (!this.dryRun) {
+      if (this.writeFailures + this.documentFailures > failuresBefore) {
+        // Some were lost. The resume point is not moved past them, but there may be none at all,
+        // so mark the form to be retried from its resume point, or from its first submission.
+        this.cloneState[retryKey] = true;
+      }
+      else {
+        delete this.cloneState[retryKey];
+      }
+    }
 
     if (this.dryRun && this.options.extra) {
       if (this.options.apiSource) {
@@ -1904,6 +1928,11 @@ class Cloner {
           project: destForm.project,
           form: destForm._id
         }));
+
+        // Every submission of the form is gone from the destination, so they are all cloned
+        // again. A resume point left by an interrupted clone would skip the ones before it.
+        delete this.cloneState[`src.submissions:${srcForm._id}`];
+        delete this.cloneState[`retry.submissions:${srcForm._id}`];
       }
       this.currentForm = srcForm;
       await this.flushWrites();
@@ -2378,10 +2407,12 @@ class Cloner {
 
     const failures = this.failures;
     if (failures) {
-      throw new Error(
-        `The clone did not complete: ${failures}. ` +
-        'The clone state was kept, so the clone can be run again to retry them.'
-      );
+      // Settings that could not be decrypted do not keep the clone state: running the clone again
+      // with the same secrets would not help.
+      const retry = (this.writeFailures || this.documentFailures)
+        ? 'The clone state was kept, so the clone can be run again to retry them.'
+        : 'Check the secrets and run the clone again.';
+      throw new Error(`The clone did not complete: ${failures}. ${retry}`);
     }
   }
 

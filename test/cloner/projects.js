@@ -508,6 +508,8 @@ describe('Project targeting', function() {
         'The operator must be told which project could not be decrypted.');
       assert.match(String(error && error.message), /1 project\(s\) had settings that could not be decrypted/,
         'The clone must not report success.');
+      assert.doesNotMatch(String(error && error.message), /clone state was kept/,
+        'The clone state is not kept for settings that could not be decrypted.');
     });
 
     it('Should never replace the settings of an existing project it could not decrypt', async function() {
