@@ -3,17 +3,14 @@
 const assert = require('assert');
 const _ = require('lodash');
 const {ObjectId} = require('mongodb');
-const Cloner = require('../../src/Cloner');
-const {seedProject, at, project, role, form, submission} = require('./fixtures');
+const {seedProject, at, project, role, form, submission, submissionRevision} = require('./fixtures');
 const {useTestDatabases, runClone, quiet} = require('./helper');
 
 /**
- * Build a bare cloner instance that can encrypt/decrypt without connecting to anything.
+ * The helpers that encrypt and decrypt the way the server does.
  */
 function crypter() {
-  const instance = Object.create(Cloner.prototype);
-  instance.defaultSaltLength = 40;
-  return instance;
+  return require('../../src/encryption');
 }
 
 describe('Project targeting', function() {
@@ -287,6 +284,74 @@ describe('Project targeting', function() {
     });
   });
 
+  describe('Custom submission collections of projects with symbols in their name', function() {
+    it('Should clone submissions and revisions to the collections the server reads', async function() {
+      const seed = await seedProject(dbs.src, {
+        forms: 1,
+        submissions: 0,
+        project: {name: 'src-project'},
+        formOverrides: [{settings: {collection: 'custom-records'}}]
+      });
+      const destProject = await dbs.dst.insert('projects', project({title: 'Destination', name: 'dst-project'}));
+      const sub = await dbs.src.insert('srcproject_customrecords', submission({
+        form: seed.forms[0]._id,
+        project: seed.project._id,
+        data: {firstName: 'Custom'},
+        created: at(20),
+        modified: at(20)
+      }));
+      await dbs.src.insert('srcproject_customrecords_revisions', submissionRevision({
+        _rid: sub._id,
+        form: seed.forms[0]._id,
+        project: seed.project._id,
+        data: {firstName: 'Custom v1'},
+        created: at(10),
+        modified: at(10)
+      }));
+
+      await quiet(() => runClone({
+        srcProject: seed.project._id.toString(),
+        dstProject: destProject._id.toString(),
+        includeSubmissionRevisions: true
+      }));
+
+      const custom = await dbs.dst.all('dstproject_customrecords');
+      assert.equal(custom.length, 1, 'Submissions must land where the server reads them.');
+      assert.equal(custom[0].data.firstName, 'Custom');
+      assert.equal(await dbs.dst.count('dst-project_custom-records'), 0);
+      const revisions = await dbs.dst.all('dstproject_customrecords_revisions');
+      assert.equal(revisions.length, 1, 'Revisions of a custom collection must be cloned to its revisions.');
+      assert.equal(revisions[0]._rid.toString(), sub._id.toString());
+      assert.equal(await dbs.dst.count('submissionrevisions'), 0);
+    });
+
+    it('Should warn about submissions an earlier clone left where the server never reads them', async function() {
+      const seed = await seedProject(dbs.src, {
+        forms: 1,
+        submissions: 0,
+        project: {name: 'src-project'},
+        formOverrides: [{settings: {collection: 'custom'}}]
+      });
+      const destProject = await dbs.dst.insert('projects', project({title: 'Destination', name: 'dst-project'}));
+      await dbs.dst.insert('dst-project_custom', submission({form: seed.forms[0]._id, project: destProject._id}));
+
+      const warnings = [];
+      const consoleError = console.error;
+      console.error = (...args) => warnings.push(args.map(String).join(' '));
+      try {
+        await quiet(() => runClone({
+          srcProject: seed.project._id.toString(),
+          dstProject: destProject._id.toString()
+        }));
+      }
+      finally {
+        console.error = consoleError;
+      }
+      assert.ok(warnings.some((line) => /in dst-project_custom, where the server never reads them/.test(line)),
+        'The operator must be told about the misplaced submissions.');
+    });
+  });
+
   describe('Encrypted submission data', function() {
     const srcDbSecret = 'source-db-secret';
     const dstDbSecret = 'destination-db-secret';
@@ -326,6 +391,49 @@ describe('Project targeting', function() {
       const decrypted = crypt.decrypt(dstProjectSecret, cloned.data.ssn);
       assert.equal(decrypted, '123-45-6789',
         'Encrypted data must be readable with the destination project secret.');
+    });
+
+    it('Should re-encrypt encrypted components within the rows of a datagrid', async function() {
+      const crypt = crypter();
+      const srcProject = project({
+        title: 'Encrypted',
+        name: 'encrypted-grid',
+        ['settings_encrypted']: crypt.encrypt(srcDbSecret, {}, true)
+      });
+      await dbs.src.insert('projects', srcProject);
+      const srcForm = await dbs.src.insert('forms', form({
+        project: srcProject._id,
+        components: [{
+          type: 'panel',
+          key: 'panel',
+          components: [{
+            type: 'datagrid',
+            key: 'people',
+            input: true,
+            components: [
+              {type: 'textfield', key: 'name', input: true},
+              {type: 'textfield', key: 'ssn', input: true, encrypted: true}
+            ]
+          }]
+        }]
+      }));
+      await dbs.src.insert('submissions', submission({
+        form: srcForm._id,
+        project: srcProject._id,
+        data: {people: [
+          {name: 'One', ssn: crypt.encrypt(srcDbSecret, '111-11-1111')},
+          {name: 'Two', ssn: crypt.encrypt(srcDbSecret, '222-22-2222')}
+        ]},
+        created: at(20),
+        modified: at(20)
+      }));
+
+      await quiet(() => runClone({srcDbSecret, dstDbSecret}));
+
+      const cloned = (await dbs.dst.all('submissions'))[0];
+      assert.deepEqual(cloned.data.people.map((row) => crypt.decrypt(dstDbSecret, row.ssn)),
+        ['111-11-1111', '222-22-2222'], 'Every row must be readable with the destination secret.');
+      assert.deepEqual(cloned.data.people.map((row) => row.name), ['One', 'Two']);
     });
 
     it('Should leave unencrypted components untouched', async function() {

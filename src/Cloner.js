@@ -3,9 +3,14 @@
 const {MongoClient, ObjectId, BSON} = require('mongodb');
 const fs = require('fs');
 const _ = require('lodash');
-const crypto = require('crypto');
-const keygenerator = require('keygenerator');
-const {eachComponentAsync}  = require('./eachComponentAsync');
+const encryption = require('./encryption');
+const {
+  redact,
+  tlsOptions,
+  submissionCollectionName,
+  legacySubmissionCollectionName,
+  idList
+} = require('./db');
 const {createHmac} = require('node:crypto');
 const fetch = require('./fetch');
 const Progress = require('./Progress');
@@ -35,22 +40,6 @@ const MAX_REPEATED_ERRORS = 5;
 // against are counted in the background while the clone carries on, so that count can take longer.
 const POSITION_COUNT_TIMEOUT = 2000;
 const BAR_COUNT_TIMEOUT = 60000;
-
-/**
- * Hide the credentials of a connection string, so that they never end up in a log.
- * @param {string} uri - The connection string.
- */
-function redact(uri) {
-  return String(uri).replace(/\/\/[^@/]+@/, '//***@');
-}
-
-/**
- * Split a comma separated list of ids, ignoring the spaces around them.
- * @param {string} value - The comma separated list.
- */
-function idList(value) {
-  return String(value || '').split(',').map((id) => id.trim()).filter((id) => id);
-}
 
 class Cloner {
   /**
@@ -90,7 +79,6 @@ class Cloner {
     this.mongoDest = mongoDest;
     this.beforeAll = null;
     this.afterAll = null;
-    this.defaultSaltLength = 40;
     this.options = options;
     this.src = null;
     this.dest = null;
@@ -372,110 +360,12 @@ class Cloner {
   }
 
   /**
-   * Derive the key and iv for a secret exactly the way the removed crypto.createCipher() did, which
-   * is OpenSSL's EVP_BytesToKey with MD5, a single iteration and no salt. This keeps us compatible
-   * with data that was encrypted by the servers, while still running on Node versions where
-   * crypto.createCipher() no longer exists.
-   *
-   * @param {string} secret - The secret to derive the key and iv from.
-   * @returns {{key: Buffer, iv: Buffer}} - The derived key and iv.
-   */
-  legacyKey(secret) {
-    // createCipher() read the password as UTF-8; latin1 would derive a different key for any secret
-    // holding a non ASCII character, and nothing encrypted with it could be read back.
-    const password = Buffer.from(secret, 'utf8');
-    const keyLength = 32;
-    const ivLength = 16;
-    let derived = Buffer.alloc(0);
-    let block = Buffer.alloc(0);
-    while (derived.length < keyLength + ivLength) {
-      block = crypto.createHash('md5').update(Buffer.concat([block, password])).digest();
-      derived = Buffer.concat([derived, block]);
-    }
-    return {
-      key: derived.subarray(0, keyLength),
-      iv: derived.subarray(keyLength, keyLength + ivLength)
-    };
-  }
-
-  /**
-   * Encrypt data or settings using a secret.
-   * @param {*} secret
-   * @param {*} rawData
-   * @param {*} nosalt
-   * @returns
-   */
-  encrypt(secret, rawData, nosalt) {
-    if (!secret || rawData === null || rawData === undefined) {
-      return null;
-    }
-    const salt = nosalt ? '' : keygenerator._({
-      length: this.defaultSaltLength
-    });
-    const {key, iv} = this.legacyKey(secret);
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    const decryptedJSON = JSON.stringify(rawData) + salt;
-    return Buffer.concat([
-      cipher.update(decryptedJSON),
-      cipher.final()
-    ]);
-  }
-
-  /**
-   * Decrypt data or settings using a secret.
-   * @param {*} secret
-   * @param {*} cipherbuffer
-   * @param {*} nosalt
-   * @returns
-   */
-  decrypt(secret, cipherbuffer, nosalt) {
-    if (!secret || !cipherbuffer) {
-      return null;
-    }
-    let data;
-    try {
-      const buffer = Buffer.isBuffer(cipherbuffer) ? cipherbuffer : cipherbuffer.buffer;
-      const {key, iv} = this.legacyKey(secret);
-      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-      const decryptedJSON = Buffer.concat([
-        decipher.update(buffer), // Buffer contains encrypted utf8
-        decipher.final()
-      ]);
-      data = JSON.parse(nosalt ? decryptedJSON : decryptedJSON.slice(0, -this.defaultSaltLength));
-    }
-    catch (e) {
-      console.log(e);
-      data = null;
-    }
-    return data;
-  }
-
-  /**
    * Create the database configuration for the given database source type.
    * @param {*} type - The type of database source.
    * @returns MongoDB configuration.
    */
   dbConfig(type) {
-    // The driver always uses the new url parser and the unified topology: from version 7 on it
-    // rejects the options that used to turn them on.
-    const config = {};
-    const caFile = this.options[`${type}Ca`];
-    const certFile = this.options[`${type}Cert`];
-    if (caFile || certFile) {
-      config.tls = true;
-      if (caFile) {
-        config.tlsCAFile = `${process.cwd()}/${caFile}`;
-
-        // A custom certificate authority is usually an internal one whose certificates do not name
-        // the host being connected to. A client certificate on its own is no reason to stop
-        // verifying who we are talking to.
-        config.tlsAllowInvalidHostnames = true;
-      }
-      if (certFile) {
-        config.tlsCertificateKeyFile = `${process.cwd()}/${certFile}`;
-      }
-    }
-    return config;
+    return tlsOptions(this.options[`${type}Ca`], this.options[`${type}Cert`]);
   }
 
   /**
@@ -1500,25 +1390,57 @@ class Cloner {
     await this.flushWrites();
     const subsCollection = _.get(form, 'settings.collection');
 
-    if (!subsCollection) {
-      if (!this.options.apiSource) {
-        this.src.submissions = this.src.ogSubmissions;
-      }
-      this.dest.submissions = this.dest.ogSubmissions;
+    if (!this.options.apiSource) {
+      this.useCollection(this.src, subsCollection && srcProj && submissionCollectionName(srcProj.name, subsCollection));
+    }
+    const destCollection = subsCollection && destProj && submissionCollectionName(destProj.name, subsCollection);
+    this.useCollection(this.dest, destCollection);
+    if (destCollection) {
+      console.log(`Using collection - ${destCollection}`);
+      await this.warnAboutMisnamedCollection(form, destProj, subsCollection, destCollection);
+    }
+  }
+
+  /**
+   * Point the submissions, and submission revisions, of a database at the collections of a form.
+   * @param {object} database - The source or the destination.
+   * @param {string|null} name - The custom collection of the form, or null for the default ones.
+   */
+  useCollection(database, name) {
+    database.submissions = name ? database.db.collection(name) : database.ogSubmissions;
+    database.submissionrevisions = name
+      ? database.db.collection(`${name}_revisions`)
+      : (database.ogSubmissionRevisions || database.submissionrevisions);
+  }
+
+  /**
+   * Earlier versions of the clone wrote the submissions of a custom collection to a collection named
+   * after the unsanitized project and collection names, where the server never reads them. Say so
+   * when the destination still has them, since they are not moved.
+   *
+   * @param {object} form - The form.
+   * @param {object} destProj - The destination project.
+   * @param {string} subsCollection - The collection setting of the form.
+   * @param {string} destCollection - The collection the submissions are cloned to.
+   */
+  async warnAboutMisnamedCollection(form, destProj, subsCollection, destCollection) {
+    const misnamed = legacySubmissionCollectionName(destProj.name, subsCollection);
+    if (this.dryRun || misnamed === destCollection) {
       return;
     }
-
-    console.log(`Using collection - ${subsCollection}`);
-
-    if (!this.options.apiSource) {
-      this.src.submissions = srcProj && subsCollection
-        ? this.src.db.collection(`${srcProj.name}_${subsCollection}`)
-        : this.src.ogSubmissions;
+    let found = 0;
+    try {
+      found = await this.dest.db.collection(misnamed).countDocuments({form: form._id}, {limit: 1});
     }
-
-    this.dest.submissions = destProj && subsCollection
-      ? this.dest.db.collection(`${destProj.name}_${subsCollection}`)
-      : this.dest.ogSubmissions;
+    catch (err) {
+      // Only a warning: it is never a reason to stop the clone.
+    }
+    if (found) {
+      this.error(
+        `The destination has submissions of ${form.title || form._id} in ${misnamed}, where the server never ` +
+        `reads them. They are cloned to ${destCollection}; ${misnamed} can be dropped once that is done.`
+      );
+    }
   }
 
   /**
@@ -1541,6 +1463,7 @@ class Cloner {
         forms: db.collection('forms'),
         ogSubmissions: db.collection('submissions'),
         submissions: db.collection('submissions'),
+        ogSubmissionRevisions: db.collection('submissionrevisions'),
         submissionrevisions: db.collection('submissionrevisions'),
         roles: db.collection('roles'),
         actions: db.collection('actions'),
@@ -1729,36 +1652,38 @@ class Cloner {
    * Migrate the data encrypted within a submission to a new secret.
    * @param {*} src - The source record
    * @param {*} update - The updated record
-   * @param {string} decryptKey - The source key to decrypt data (either project.settings.secret or DB_SECRET).
+   * @param {object[]|null} encryptedComponents - The components of the form, when it has encrypted ones.
    */
-  migrateDataEncryption(src, update, compsWithEncryptedData) {
+  migrateDataEncryption(src, update, encryptedComponents) {
     const srcSecret = this.srcSecret || this.options.srcDbSecret;
     const destSecret = this.dstSecret || this.options.dstDbSecret;
     if (
-      !compsWithEncryptedData.length ||
+      !encryptedComponents ||
       !srcSecret ||
       !destSecret ||
       srcSecret === destSecret
     ) {
       return;
     }
-    compsWithEncryptedData.forEach((compPath) => {
-      if (_.get(src, `data.${compPath}`, false)) {
-        const decrypted = this.decrypt(srcSecret, _.get(src, `data.${compPath}`));
 
-        // A value that decrypts to 0, false or an empty string is still a value: only a decrypt
-        // that actually failed comes back as null.
-        const reEncrypted = (decrypted === null || decrypted === undefined)
-          ? null
-          : this.encrypt(destSecret, decrypted);
-        if (!reEncrypted) {
-          // Leave the value as it is rather than destroying it: it can still be read with the
-          // secret it was encrypted with.
-          this.error(`Could not re-encrypt ${compPath} of submission ${src._id}, it was left as it is.`);
-          return;
-        }
-        _.set(update, `data.${compPath}`, reEncrypted);
+    // The values are collected first: the update can share its data with the source.
+    const values = [];
+    encryption.eachEncryptedValue(encryptedComponents, src.data, (value, path) => values.push({value, path}));
+    values.forEach(({value, path}) => {
+      const decrypted = encryption.decrypt(srcSecret, value);
+
+      // A value that decrypts to 0, false or an empty string is still a value: only a decrypt
+      // that actually failed comes back as null.
+      const reEncrypted = (decrypted === null || decrypted === undefined)
+        ? null
+        : encryption.encrypt(destSecret, decrypted);
+      if (!reEncrypted) {
+        // Leave the value as it is rather than destroying it: it can still be read with the
+        // secret it was encrypted with.
+        this.error(`Could not re-encrypt ${path.join('.')} of submission ${src._id}, it was left as it is.`);
+        return;
       }
+      _.set(update, ['data', ...path], reEncrypted);
     });
   }
 
@@ -1766,9 +1691,9 @@ class Cloner {
    * Clone submissions from one form to another.
    * @param {*} srcForm - The source form from the database.
    * @param {*} destForm - The destination from from the database.
-   * @param {string[]} compsWithEncryptedData - Array with paths of components that are encrypted.
+   * @param {object[]|null} encryptedComponents - The components of the form, when it has encrypted ones.
    */
-  async cloneSubmissions(srcForm, destForm, compsWithEncryptedData) {
+  async cloneSubmissions(srcForm, destForm, encryptedComponents) {
     // A dry run reports on every submission of the form, not only the ones a clone would write, so
     // it checks the destination for each of them and does not start from the last one cloned.
     const compareAll = this.options.updateExistingSubmissions || this.dryRun;
@@ -1802,9 +1727,7 @@ class Cloner {
     await this.upsertAll('submissions', query, null, async(src, update) => {
       update.form = destForm._id;
       update.project = destForm.project;
-      if (compsWithEncryptedData.length) {
-        this.migrateDataEncryption(src, update, compsWithEncryptedData);
-      }
+      this.migrateDataEncryption(src, update, encryptedComponents);
       if (update.roles) {
         // Only the source roles are mapped: a submission without roles must not have the roles of
         // the destination document wiped, which are no longer fetched.
@@ -1813,7 +1736,7 @@ class Cloner {
       this.migrateAccess(src.access, update.access);
     }, async(srcSubmission, destSubmission) => {
       this.currentSubmission = srcSubmission;
-      await this.cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData);
+      await this.cloneSubmissionRevisions(srcSubmission, destSubmission, encryptedComponents);
     }, {
       find: compareAll ? null : false,
       scope: srcForm._id.toString(),
@@ -1847,7 +1770,7 @@ class Cloner {
    * @param {*} srcSubmission - The source submission.
    * @param {*} destSubmission - The destination submission.
    */
-  async cloneSubmissionRevisions(srcSubmission, destSubmission, compsWithEncryptedData) {
+  async cloneSubmissionRevisions(srcSubmission, destSubmission, encryptedComponents) {
     if (!this.options.includeSubmissionRevisions) {
       return;
     }
@@ -1855,7 +1778,7 @@ class Cloner {
       _rid: srcSubmission._id
     }), null, async(src, update) => {
       update._rid = destSubmission._id;
-      this.migrateDataEncryption(src, update, compsWithEncryptedData);
+      this.migrateDataEncryption(src, update, encryptedComponents);
     }, null, {
       scope: srcSubmission._id.toString(),
 
@@ -1937,7 +1860,7 @@ class Cloner {
    * @param {*} destProject - The destination project.
    */
   async cloneForms(srcProject, destProject) {
-    let compsWithEncryptedData = [];
+    let encryptedComponents = null;
     const query = this.formQuery(srcProject);
     const total = this.dryRun ? null : await this.countSource('src.forms', query, POSITION_COUNT_TIMEOUT);
     let position = 0;
@@ -1956,12 +1879,7 @@ class Cloner {
       // This mapping runs for every source form, including the ones that are not written to the
       // destination (--submissions-only, or a form that has not changed), because the submissions
       // of the form are cloned using these values.
-      compsWithEncryptedData = [];
-      await eachComponentAsync(update.components, async(component, path) => {
-        if (component.encrypted) {
-          compsWithEncryptedData.push(path);
-        }
-      });
+      encryptedComponents = encryption.hasEncryptedComponents(update.components) ? update.components : null;
 
       await this.setCollection(update, srcProject, destProject);
       if (destProject) {
@@ -1984,7 +1902,7 @@ class Cloner {
       }
       this.currentForm = srcForm;
       await this.flushWrites();
-      await this.cloneSubmissions(srcForm, destForm, compsWithEncryptedData);
+      await this.cloneSubmissions(srcForm, destForm, encryptedComponents);
       await this.cloneActions(srcForm, destForm);
       await this.cloneFormRevisions(srcForm, destForm);
       await this.flushWrites();
@@ -2145,7 +2063,7 @@ class Cloner {
     if (!decryptedSrcSettings) {
       return !!dest;
     }
-    const reEncrypted = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
+    const reEncrypted = encryption.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
     if (reEncrypted) {
       update['settings_encrypted'] = reEncrypted;
     }
@@ -2182,7 +2100,7 @@ class Cloner {
 
     // A destination project without settings has no secret of its own yet.
     const decryptedDstSettings = (destProject && destProject['settings_encrypted'])
-      ? this.decrypt(this.options.dstDbSecret, destProject['settings_encrypted'], true)
+      ? encryption.decrypt(this.options.dstDbSecret, destProject['settings_encrypted'], true)
       : {};
     if (!decryptedDstSettings) {
       this.reportUndecryptable('destination', destProject, '--dst-db-secret');
@@ -2191,7 +2109,7 @@ class Cloner {
     if (decryptedDstSettings.secret) {
       this.dstSecret = decryptedDstSettings.secret;
     }
-    const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
+    const decryptedSrcSettings = encryption.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
     if (!decryptedSrcSettings) {
       this.reportUndecryptable('source', srcProject, '--src-db-secret');
       return null;

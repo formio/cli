@@ -1,3 +1,14 @@
+## [Unreleased]
+### Added
+ - The ```rekey``` command, to re-encrypt the project settings and encrypted submission data of a database with a new DB_SECRET.
+
+### Fixed
+ - The clone command did not re-encrypt encrypted fields within the rows of a datagrid or an editgrid.
+ - The clone command named custom submission collections after the unsanitized project and collection names, where
+   the server never reads them, and cloned their revisions from and to the default revisions collection. It now
+   uses the server's names (```myproject_records``` and ```myproject_records_revisions```), and warns when the
+   destination still has submissions in a collection an earlier clone misnamed.
+
 ## 2.3.2
 ### Changed
  - Fixing the cloner to not skip if the destination item does not exist
