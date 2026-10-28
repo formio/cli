@@ -17,10 +17,22 @@ Installation is easy... Simply type the following in your command line.
 npm install -g @formio/cli
 ```
 
+The CLI requires Node.js 22.12.0 or newer.
+
+### Upgrading from 2.x
+Version 3.0 requires Node.js 22.12.0 or newer, and uses version 7 of the MongoDB Node.js driver, so check that the
+MongoDB servers you clone from and to are supported by it. See the [Changelog](Changelog.md) for everything that
+changed. If an earlier version cloned encrypted data with the wrong secret, or into custom submission collections,
+see [Rekey](#rekey) and [Clone Encrypted Data](#clone-encrypted-data).
+
 Commands
 -------------
 
 ### Migrate
+
+> **Deprecated:** the ```migrate``` command prints a warning, and will be removed in a future release. Use
+> [Clone](#clone) to copy a project between databases, and [Deploy](#deploy) to copy forms and resources between
+> servers.
 
     formio migrate <source> [<transformer>] <destination> --src-key [SOURCE_API_KEY] --dst-key [DESTINATION_API_KEY]
 
@@ -251,12 +263,35 @@ db.submissions.createIndex({form: 1, project: 1, created: -1});
    so a clone that is interrupted (Ctrl+C), terminated or even killed outright continues from the last batch that
    was written the next time it is run. A clone that finishes removes the file. Delete it to start over.
 
+### Clone Encrypted Data
+
+   Give the ```DB_SECRET``` of both servers when the projects have encrypted settings or encrypted fields:
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --src-db-secret=[SOURCE_SECRET] --dst-db-secret=[DESTINATION_SECRET]
+
+   The project settings are re-encrypted with the destination ```DB_SECRET```. The values of encrypted fields,
+   including the ones within the rows of a datagrid or an editgrid and within containers, are re-encrypted with the
+   secret the destination server reads them with: the ```secret``` of the project settings, or the destination
+   ```DB_SECRET``` when the project has none. When both secrets are the same, everything is copied as it is. A value
+   that cannot be decrypted with the source secret is reported and left as it is.
+
+   If a clone was already run with the wrong ```--dst-db-secret```, use [Rekey](#rekey) to fix the destination
+   rather than cloning again.
+
+   Forms with their own submission collection are cloned to the collection the server reads them from. The server
+   strips everything but letters and digits from the project name and the collection, so the submissions of the
+   ```records``` collection of the ```my-project``` project are in ```myproject_records```, and their revisions in
+   ```myproject_records_revisions```. Versions before 3.0 used the names as they are (```my-project_records```), where
+   the server never reads them. The clone warns when the destination still has submissions there; those collections
+   can be dropped once the clone is done.
+
 ### When a clone fails
 
    A clone that could not write everything it read exits with an error naming how many documents were lost, and
    keeps its ```clonestate.json``` so that running it again retries from the last document that was actually
-   written. It never reports success for data that did not arrive. Documents that already exist in the
-   destination (the same ```_id```) are not a failure: they are simply not cloned again. A document that conflicts
+   written, including documents older than ones that did arrive. It never reports success for data that did not
+   arrive. Documents that already exist in the destination (the same ```_id```) are not a failure: they are simply
+   not cloned again. A document that conflicts
    with a different destination document on another unique index is a failure.
 
    Projects and forms are written as soon as they are cloned. When one cannot be written, nothing within it (its
@@ -270,6 +305,10 @@ db.submissions.createIndex({form: 1, project: 1, created: -1});
    When ```--src-db-secret``` and ```--dst-db-secret``` differ, project settings are re-encrypted for the
    destination. The settings a destination project already has are never replaced. A project whose settings cannot
    be decrypted (a wrong secret) is not created in the destination, and the clone exits with an error naming it.
+   Running it again with the same secrets will not help: check the secrets first.
+
+   Resuming a clone with ```--delete-submissions``` deletes the destination submissions of the form it stopped in
+   and clones all of them again, rather than continuing from where it stopped.
 
 ### Resuming and Updating
 
@@ -278,17 +317,6 @@ db.submissions.createIndex({form: 1, project: 1, created: -1});
    ```--update-existing-submissions``` to also update submissions that already exist in the destination.
 
     formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --update-existing-submissions
-
-### Testing the clone command
-
-   The clone tests run against a throw-away Mongo container and do not need a license key:
-
-```
-yarn test:cloner
-```
-
-   They cover every clone flag, the dry run output, resuming an interrupted clone, and cloning from an API source
-   (served by a stub API), against a real Mongo database.
 
 ### Rekey
 
@@ -311,10 +339,18 @@ yarn test:cloner
    | ```--dry-run``` | Change nothing. Report how much would be re-keyed, and what cannot be decrypted. |
    | ```--no-submission-revisions``` | Leave the submission revisions alone. |
    | ```--batch-size <size>``` | The number of documents written at a time (default 1000). |
-   | ```--ca <file>```, ```--cert <file>``` | The TLS certificate authority and certificate key file for the connection. |
+   | ```--ca <file>```, ```--cert <file>``` | The TLS certificate authority and certificate key file for the connection, absolute or relative to the working directory. |
+
+   For example, to fix a destination that was cloned with the wrong secret, after a dry run:
+
+    formio rekey <mongo_db> --new-db-secret=[DESTINATION_SECRET] --old-db-secret=[WRONG_SECRET] --old-db-secret=[SOURCE_SECRET] --dry-run
 
    Back up the database, and stop the servers that use it, before re-keying: a server running with the wrong
    secret keeps writing data encrypted with it. Start with a ```--dry-run```.
+
+   The submissions of forms with their own collection are re-keyed too, and so are the submissions and revisions
+   that versions of the clone before 3.0 left in misnamed collections or in the default ```submissionrevisions```
+   collection. Those are re-keyed where they are, and the command says where they should be.
 
    Values none of the secrets can decrypt are listed and left as they are, and the command exits with an error.
    A project whose settings cannot be decrypted is skipped entirely, because the secret of its data is in those
@@ -370,3 +406,50 @@ formio copy form https://myapp.form.io/myform https://myotherapp.form.io/myform
 // Aggregate multiple forms into the same form.
 formio copy form https://myapp.form.io/form1,https://myapp.form.io/form2 https://myapp.form.io/allforms
 ```
+
+### Submissions
+
+```
+formio submissions <form_url> [each]
+```
+
+Reads the submissions of a form. Without ```[each]``` they are written to the terminal as a JSON array, after a
+```RESULT:``` prefix. With it, ```[each]``` is the path, relative to the working directory, of a Node.js module that
+exports a function, which is called with ```(submission, index, options, next)``` for every submission.
+
+| Option | What it does |
+| --- | --- |
+| ```--key <key>``` | The API key of the project. |
+| ```--admin-key <key>``` | The admin API key of the server. |
+
+Examples:
+
+```
+// Write the submissions of a form to the terminal.
+formio submissions https://myproject.form.io/myform --key abc1234
+
+// Hand each submission to a script.
+formio submissions https://myproject.form.io/myform each.js --key abc1234
+```
+
+Development
+-------------
+
+The project uses Yarn 4 through Corepack:
+
+```
+corepack enable
+yarn install
+```
+
+| Command | What it runs |
+| --- | --- |
+| ```yarn lint``` | ESLint. |
+| ```yarn test:cli``` | The command line parsing tests. They need nothing else. |
+| ```yarn test:cloner``` | The clone and rekey tests, against a MongoDB container started with Docker on port 27018. |
+| ```yarn test``` | The CLI tests, then the end to end tests against two Form.io Enterprise API servers started with Docker. These need a valid Form.io Enterprise license in the ```LICENSE_KEY``` environment variable. |
+
+The clone tests do not need a license key. They cover every clone flag, the dry run output, resuming an interrupted
+clone, cloning from an API source (served by a stub API), and the rekey command, against a real MongoDB database. To
+run them against a MongoDB of your own, set ```CLONER_TEST_SRC``` and ```CLONER_TEST_DST``` to the connection strings
+of two throw-away databases and run ```yarn mocha ./test/cloner/index.js -t 60000 --exit```.
