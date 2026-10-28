@@ -2,7 +2,7 @@
 'use strict';
 const assert = require('assert');
 const {seedProject, at, form, submission, formRevision, submissionRevision} = require('./fixtures');
-const {useTestDatabases, runClone, quiet} = require('./helper');
+const {useTestDatabases, runClone, quiet, writeCloneState} = require('./helper');
 
 describe('Clone flags', function() {
   const dbs = useTestDatabases();
@@ -211,6 +211,24 @@ describe('Clone flags', function() {
       const names = (await dbs.dst.all('submissions')).map((sub) => sub.data.firstName).sort();
       assert.deepEqual(names, ['User 1-1', 'User 1-2']);
       assert.equal(seed.submissions.length, 2);
+    });
+
+    it('Should clone every submission again when resuming an interrupted clone', async function() {
+      const seed = await seedProject(dbs.src, {forms: 1, submissions: 4});
+      await quiet(() => runClone({}));
+
+      // A previous run deleted the submissions of the form, cloned half of them and was killed.
+      writeCloneState({
+        [`src.submissions:${seed.forms[0]._id}`]: {
+          created: seed.submissions[1].created.toISOString(),
+          _id: seed.submissions[1]._id.toString()
+        }
+      });
+
+      await quiet(() => runClone({deleteSubmissions: true}));
+
+      assert.equal(await dbs.dst.count('submissions'), 4,
+        'The submissions before the resume point must not be lost.');
     });
   });
 

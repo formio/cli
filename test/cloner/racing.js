@@ -82,6 +82,41 @@ describe('A source that changes while it is read', function() {
     }
   });
 
+  it('Should keep the records after one that disappears in the middle of a group', async function() {
+    const seed = await seedProject(dbs.src, {forms: 1, submissions: 4});
+    await quiet(() => runClone({}));
+    await dbs.src.collection('submissions').updateMany({},
+      {$set: {'data.firstName': 'Changed', modified: at(900)}});
+
+    const cloner = createCloner({updateExistingSubmissions: true});
+    const sourceReader = cloner.sourceReader.bind(cloner);
+    let removed = false;
+    cloner.sourceReader = (collection, chunk) => {
+      const reader = sourceReader(collection, chunk);
+      return async(projected) => {
+        if (!removed && collection === 'src.submissions') {
+          // The second record of the group is gone by the time the group is read in full.
+          removed = true;
+          await dbs.src.collection('submissions').deleteOne({_id: seed.submissions[1]._id});
+        }
+        return reader(projected);
+      };
+    };
+    try {
+      await quiet(() => cloner.clone());
+    }
+    finally {
+      cloner.destroy();
+    }
+
+    assert.equal(cloner.vanished, 1, 'Only the record that was deleted should be skipped.');
+    for (const sub of [seed.submissions[0], ...seed.submissions.slice(2)]) {
+      const cloned = await dbs.dst.findOne('submissions', {_id: sub._id});
+      assert.equal(cloned.data.firstName, 'Changed',
+        'The records after the one that disappeared should be cloned normally.');
+    }
+  });
+
   it('Should save the resume point when the clone is aborted', async function() {
     const seed = await seedProject(dbs.src, {forms: 2, submissions: 4});
     const cloner = createCloner({batchSize: 2});

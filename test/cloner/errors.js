@@ -171,6 +171,38 @@ describe('Error handling', function() {
         'Retrying should write every document that was lost.');
     });
 
+    it('Should retry lost submissions that are older than the ones that were written', async function() {
+      const seed = await seedProject(dbs.src, {forms: 1, submissions: 0});
+      for (const [minutes, firstName] of [[1, 'Rejected'], [2, 'Accepted'], [3, 'Accepted']]) {
+        await dbs.src.insert('submissions', submission({
+          form: seed.forms[0]._id,
+          project: seed.project._id,
+          data: {firstName},
+          created: at(minutes),
+          modified: at(minutes)
+        }));
+      }
+      // Only the oldest submission is rejected, so newer ones land in the destination.
+      try {
+        await dbs.dst.db.collection('submissions').drop();
+      }
+      catch (err) {
+        // It may not exist yet.
+      }
+      await dbs.dst.db.createCollection('submissions', {
+        validator: {'data.firstName': {$ne: 'Rejected'}}
+      });
+
+      await assert.rejects(() => quiet(() => runClone({batchSize: 1})), /could not be written/);
+      assert.equal(await dbs.dst.count('submissions'), 2);
+
+      await acceptSubmissionWrites();
+      await quiet(() => runClone({batchSize: 1}));
+
+      assert.equal(await dbs.dst.count('submissions'), 3,
+        'The submission that was lost should be written when the clone is run again.');
+    });
+
     it('Should still clone the collections that do write', async function() {
       await seedProject(dbs.src, {forms: 2, submissions: 1});
       await rejectSubmissionWrites();
