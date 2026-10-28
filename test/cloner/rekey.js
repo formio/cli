@@ -4,6 +4,7 @@ const assert = require('assert');
 const {ObjectId} = require('mongodb');
 const Rekeyer = require('../../src/Rekeyer');
 const {encrypt, decrypt, eachEncryptedValue, hasEncryptedComponents} = require('../../src/encryption');
+const {tlsOptions} = require('../../src/db');
 const {DST_URI, TestDb, project, form, submission, submissionRevision} = require('./fixtures');
 const {quiet} = require('./helper');
 
@@ -120,6 +121,14 @@ describe('Rekey', function() {
       assert.deepEqual(found, []);
     });
 
+    it('Should find and read values that went through JSON, the way an API returns them', function() {
+      const serialized = JSON.parse(JSON.stringify({ssn: encrypt('x', '123-45-6789')}));
+      const found = [];
+      eachEncryptedValue([{type: 'textfield', key: 'ssn', encrypted: true}], serialized, (value) => found.push(value));
+      assert.equal(found.length, 1);
+      assert.equal(decrypt('x', found[0]), '123-45-6789');
+    });
+
     it('Should tell whether a form has encrypted components', function() {
       assert.equal(hasEncryptedComponents(COMPONENTS), true);
       assert.equal(hasEncryptedComponents([{type: 'panel', components: [{type: 'textfield', key: 'a'}]}]), false);
@@ -165,6 +174,17 @@ describe('Rekey', function() {
 
     it('Should accept a single old secret as a string', function() {
       assert.deepEqual(new Rekeyer(DST_URI, {newDbSecret: 'a', oldDbSecret: 'b'}).oldSecrets, ['b']);
+    });
+
+    it('Should ignore a project id that is given twice', function() {
+      const id = new ObjectId().toString();
+      assert.deepEqual(new Rekeyer(DST_URI, {project: `${id}, ${id}`}).projectIds, [id]);
+    });
+
+    it('Should accept absolute and relative certificate paths', function() {
+      assert.equal(tlsOptions('/etc/ssl/ca.pem').tlsCAFile, '/etc/ssl/ca.pem');
+      assert.equal(tlsOptions(null, '/etc/ssl/cert.pem').tlsCertificateKeyFile, '/etc/ssl/cert.pem');
+      assert.equal(tlsOptions('ca.pem').tlsCAFile, require('path').join(process.cwd(), 'ca.pem'));
     });
   });
 
@@ -338,6 +358,22 @@ describe('Rekey', function() {
       assert.deepEqual(rekeyer.totals.values, {rekeyed: 0, current: 0, undecryptable: 0},
         'Without the settings, the secret of the data is not known.');
       assert.match(String(error && error.message), /had settings none of the secrets could decrypt/);
+    });
+
+    it('Should re-key the revisions of a custom collection left in the default collection', async function() {
+      // Earlier versions of the clone wrote them there, instead of to the revisions of the collection.
+      const stray = await db.insert('submissionrevisions', submissionRevision({
+        _rid: new ObjectId(),
+        form: seed.customForm._id,
+        project: seed.plain._id,
+        data: encryptedData(WRONG_SECRET)
+      }));
+      const {warnings} = await runRekey({});
+
+      const revision = await db.findOne('submissionrevisions', {_id: stray._id});
+      assert.deepEqual(decryptedData(NEW_SECRET, revision.data), PLAIN);
+      assert.ok(warnings.some((line) => /Revisions of this form are in submissionrevisions/.test(line)),
+        'The operator should be told the revisions are where the server does not read them.');
     });
 
     it('Should leave the submission revisions alone when asked to', async function() {

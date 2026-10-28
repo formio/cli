@@ -3,6 +3,7 @@
 const assert = require('assert');
 const {ObjectId} = require('mongodb');
 const Cloner = require('../../src/Cloner');
+const {encrypt, decrypt} = require('../../src/encryption');
 const {quiet} = require('./helper');
 
 /**
@@ -12,7 +13,6 @@ const {quiet} = require('./helper');
 function bare(options = {}) {
   const instance = Object.create(Cloner.prototype);
   instance.options = options;
-  instance.defaultSaltLength = 40;
   instance.exclude = [];
   instance.dryRun = !!options.dryRun;
   instance.dryRunBuffer = [];
@@ -31,7 +31,7 @@ describe('Cloner units', function() {
     it('Should produce the legacy OpenSSL compatible ciphertext', function() {
       // Generated with: printf '{"a":1}' | openssl enc -aes-256-cbc -nosalt -md md5 -pass pass:mysecret -base64
       // which is the exact format the removed crypto.createCipher() produced.
-      const encrypted = bare().encrypt('mysecret', {a: 1}, true);
+      const encrypted = encrypt('mysecret', {a: 1}, true);
       assert.equal(encrypted.toString('base64'), 'aqN/mkNcqrTMql3ObHRt6Q==');
     });
 
@@ -39,49 +39,55 @@ describe('Cloner units', function() {
       // printf '{"a":1}' | openssl enc -aes-256-cbc -nosalt -md md5 -pass pass:sécret -base64
       // Reading the secret as latin1 instead derives a different key, and nothing encrypted with a
       // non ASCII secret could be decrypted again.
-      const encrypted = bare().encrypt('sécret', {a: 1}, true);
+      const encrypted = encrypt('sécret', {a: 1}, true);
       assert.equal(encrypted.toString('base64'), 's332i21yTmVluklx2eqRaA==');
-      assert.deepEqual(bare().decrypt('sécret', encrypted, true), {a: 1});
+      assert.deepEqual(decrypt('sécret', encrypted, true), {a: 1});
     });
 
     it('Should decrypt legacy ciphertext', function() {
       const buffer = Buffer.from('aqN/mkNcqrTMql3ObHRt6Q==', 'base64');
-      assert.deepEqual(bare().decrypt('mysecret', buffer, true), {a: 1});
+      assert.deepEqual(decrypt('mysecret', buffer, true), {a: 1});
     });
 
     it('Should round trip salted data', function() {
-      const instance = bare();
-      const encrypted = instance.encrypt('a-secret', {ssn: '123-45-6789'});
-      assert.deepEqual(instance.decrypt('a-secret', encrypted), {ssn: '123-45-6789'});
+      const encrypted = encrypt('a-secret', {ssn: '123-45-6789'});
+      assert.deepEqual(decrypt('a-secret', encrypted), {ssn: '123-45-6789'});
     });
 
     it('Should round trip a binary buffer wrapper', function() {
-      const instance = bare();
-      const encrypted = instance.encrypt('a-secret', 'plain value');
-      assert.equal(instance.decrypt('a-secret', {buffer: encrypted}), 'plain value');
+      const encrypted = encrypt('a-secret', 'plain value');
+      assert.equal(decrypt('a-secret', {buffer: encrypted}), 'plain value');
     });
 
     it('Should encrypt values that are falsy but real', function() {
-      const instance = bare();
       for (const value of [0, false, '']) {
-        const encrypted = instance.encrypt('a-secret', value);
+        const encrypted = encrypt('a-secret', value);
         assert.ok(encrypted, `${JSON.stringify(value)} is a value and must be encrypted.`);
-        assert.deepEqual(instance.decrypt('a-secret', encrypted), value);
+        assert.deepEqual(decrypt('a-secret', encrypted), value);
       }
     });
 
     it('Should return null when a secret or payload is missing', function() {
-      const instance = bare();
-      assert.equal(instance.encrypt('', {a: 1}), null);
-      assert.equal(instance.encrypt('secret', null), null);
-      assert.equal(instance.decrypt('', Buffer.from('x')), null);
-      assert.equal(instance.decrypt('secret', null), null);
+      assert.equal(encrypt('', {a: 1}), null);
+      assert.equal(encrypt('secret', null), null);
+      assert.equal(decrypt('', Buffer.from('x')), null);
+      assert.equal(decrypt('secret', null), null);
     });
 
     it('Should return null when decrypting with the wrong secret', function() {
-      const instance = bare();
-      const encrypted = instance.encrypt('right-secret', {a: 1}, true);
-      assert.equal(instance.decrypt('wrong-secret', encrypted, true), null);
+      const encrypted = encrypt('right-secret', {a: 1}, true);
+      assert.equal(decrypt('wrong-secret', encrypted, true), null);
+    });
+  });
+
+  describe('migrateDataEncryption', function() {
+    it('Should re-encrypt values an API returned as JSON', function() {
+      const instance = bare({srcDbSecret: 'source', dstDbSecret: 'destination'});
+      const src = {_id: 'a', data: JSON.parse(JSON.stringify({ssn: encrypt('source', '123-45-6789')}))};
+      const update = {data: Object.assign({}, src.data)};
+      instance.migrateDataEncryption(src, update, [{type: 'textfield', key: 'ssn', encrypted: true}]);
+      assert.ok(Buffer.isBuffer(update.data.ssn), 'It should be written back as binary data.');
+      assert.equal(decrypt('destination', update.data.ssn), '123-45-6789');
     });
   });
 

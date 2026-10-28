@@ -40,6 +40,15 @@ function legacyKey(secret) {
 }
 
 /**
+ * Whether a value is a Buffer that went through JSON, which is how an API hands back the encrypted
+ * values it reads raw from the database.
+ * @param {*} value - The value.
+ */
+function isSerializedBuffer(value) {
+  return !!(value && value.type === 'Buffer' && Array.isArray(value.data));
+}
+
+/**
  * Encrypt data or settings using a secret, the way the server does.
  * @param {string} secret - The secret.
  * @param {*} rawData - The data to encrypt.
@@ -63,7 +72,8 @@ function encrypt(secret, rawData, nosalt, saltLength = SALT_LENGTH) {
 /**
  * Decrypt data or settings using a secret.
  * @param {string} secret - The secret.
- * @param {Buffer|Binary} cipherbuffer - The encrypted data, as a Buffer or as a mongo Binary.
+ * @param {Buffer|Binary|object} cipherbuffer - The encrypted data, as a Buffer, a mongo Binary or a
+ *                                       Buffer serialized as JSON.
  * @param {boolean} nosalt - The data was encrypted without a salt, as the project settings are.
  * @param {number} saltLength - The length of the salt.
  * @returns {*} - The decrypted data, or null when it cannot be decrypted with this secret.
@@ -73,7 +83,9 @@ function decrypt(secret, cipherbuffer, nosalt, saltLength = SALT_LENGTH) {
     return null;
   }
   try {
-    const buffer = Buffer.isBuffer(cipherbuffer) ? cipherbuffer : cipherbuffer.buffer;
+    const buffer = Buffer.isBuffer(cipherbuffer)
+      ? cipherbuffer
+      : (isSerializedBuffer(cipherbuffer) ? Buffer.from(cipherbuffer.data) : cipherbuffer.buffer);
     const {key, iv} = legacyKey(secret);
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     const decryptedJSON = Buffer.concat([
@@ -94,7 +106,7 @@ function decrypt(secret, cipherbuffer, nosalt, saltLength = SALT_LENGTH) {
  * @param {*} value - The stored value.
  */
 function isEncryptedValue(value) {
-  return Buffer.isBuffer(value) || !!(value && value._bsontype === 'Binary');
+  return Buffer.isBuffer(value) || !!(value && value._bsontype === 'Binary') || isSerializedBuffer(value);
 }
 
 /**

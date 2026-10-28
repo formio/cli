@@ -2,7 +2,13 @@
 const {MongoClient, ObjectId} = require('mongodb');
 const _ = require('lodash');
 const Progress = require('./Progress');
-const {redact, tlsOptions, submissionCollectionName} = require('./db');
+const {
+  redact,
+  tlsOptions,
+  submissionCollectionName,
+  legacySubmissionCollectionName,
+  idList
+} = require('./db');
 const {encrypt, decrypt, eachEncryptedValue, hasEncryptedComponents} = require('./encryption');
 
 const SETTINGS = 'settings_encrypted';
@@ -12,14 +18,6 @@ const COUNT_TIMEOUT = 10000;
 
 // How many of the values that could not be decrypted are listed one by one, per collection.
 const MAX_LISTED = 20;
-
-/**
- * Split a comma separated list of ids, ignoring the spaces around them.
- * @param {string} value - The comma separated list.
- */
-function idList(value) {
-  return String(value || '').split(',').map((id) => id.trim()).filter((id) => id);
-}
 
 /**
  * Re-encrypt the project settings and the encrypted submission data of a database with a new
@@ -246,9 +244,14 @@ class Rekeyer {
         throw new Error(`Only ${found} of the ${this.projectIds.length} projects given were found.`);
       }
     }
-    const cursor = this.db.collection('projects').find(query).sort({created: 1, _id: 1});
-    for await (const project of cursor) {
-      await this.rekeyProject(project);
+    // Only the ids are listed up front: a cursor left idle while the submissions of a project are
+    // re-keyed, which can take hours, is closed by the server before the next project is read.
+    const ids = await this.idsOf(this.db.collection('projects'), query);
+    for (const _id of ids) {
+      const project = await this.db.collection('projects').findOne({_id});
+      if (project) {
+        await this.rekeyProject(project);
+      }
     }
   }
 
@@ -271,12 +274,24 @@ class Rekeyer {
     const candidates = _.uniq([...this.oldSecrets, this.newSecret, settings.secret])
       .filter((secret) => secret && secret !== target);
 
-    const forms = this.db.collection('forms').find({project: project._id}).sort({created: 1, _id: 1});
-    for await (const form of forms) {
-      if (hasEncryptedComponents(form.components)) {
+    const formIds = await this.idsOf(this.db.collection('forms'), {project: project._id});
+    for (const _id of formIds) {
+      const form = await this.db.collection('forms').findOne({_id});
+      if (form && hasEncryptedComponents(form.components)) {
         await this.rekeyForm(project, form, target, candidates);
       }
     }
+  }
+
+  /**
+   * The ids of the documents a query matches, in the order they were created.
+   * @param {Collection} collection - The collection.
+   * @param {object} query - The query.
+   * @returns {ObjectId[]} - The ids.
+   */
+  async idsOf(collection, query) {
+    const docs = await collection.find(query, {projection: {_id: 1}}).sort({created: 1, _id: 1}).toArray();
+    return docs.map((doc) => doc._id);
   }
 
   /**
@@ -342,7 +357,7 @@ class Rekeyer {
     // name, where the server never looks for them. Those submissions are re-keyed too, but they
     // still have to be moved to where the server reads them from.
     const custom = _.get(form, 'settings.collection');
-    const unsanitized = custom ? `${project.name}_${custom}` : null;
+    const unsanitized = custom ? legacySubmissionCollectionName(project.name, custom) : null;
     const misplaced = unsanitized && unsanitized !== collections[0] &&
       await this.count(this.db.collection(unsanitized), {form: form._id});
     if (misplaced) {
@@ -356,10 +371,27 @@ class Rekeyer {
     const query = {form: form._id};
     for (const collection of collections) {
       await this.rekeyCollection(collection, query, form.components, target, candidates, '      - Submissions:');
-      if (this.includeRevisions) {
-        const revisions = (collection === 'submissions') ? 'submissionrevisions' : `${collection}_revisions`;
-        await this.rekeyCollection(revisions, query, form.components, target, candidates, '      - Revisions:');
-      }
+    }
+    if (!this.includeRevisions) {
+      return;
+    }
+    const revisions = collections.map((collection) => {
+      return (collection === 'submissions') ? 'submissionrevisions' : `${collection}_revisions`;
+    });
+
+    // Earlier versions of the clone command also wrote the revisions of a custom collection to the
+    // default revisions collection. The server never reads them there, but they are re-keyed all the
+    // same, so that nothing is left on the old secret.
+    if (custom && !revisions.includes('submissionrevisions') &&
+      await this.db.collection('submissionrevisions').findOne(query, {projection: {_id: 1}})) {
+      this.error(
+        `      Revisions of this form are in submissionrevisions, but the server reads them from ${revisions[0]}. ` +
+        'They are re-keyed where they are.'
+      );
+      revisions.push('submissionrevisions');
+    }
+    for (const collection of revisions) {
+      await this.rekeyCollection(collection, query, form.components, target, candidates, '      - Revisions:');
     }
   }
 

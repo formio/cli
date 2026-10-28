@@ -4,7 +4,13 @@ const {MongoClient, ObjectId, BSON} = require('mongodb');
 const fs = require('fs');
 const _ = require('lodash');
 const encryption = require('./encryption');
-const {redact, tlsOptions, submissionCollectionName} = require('./db');
+const {
+  redact,
+  tlsOptions,
+  submissionCollectionName,
+  legacySubmissionCollectionName,
+  idList
+} = require('./db');
 const {createHmac} = require('node:crypto');
 const fetch = require('./fetch');
 const Progress = require('./Progress');
@@ -34,14 +40,6 @@ const MAX_REPEATED_ERRORS = 5;
 // against are counted in the background while the clone carries on, so that count can take longer.
 const POSITION_COUNT_TIMEOUT = 2000;
 const BAR_COUNT_TIMEOUT = 60000;
-
-/**
- * Split a comma separated list of ids, ignoring the spaces around them.
- * @param {string} value - The comma separated list.
- */
-function idList(value) {
-  return String(value || '').split(',').map((id) => id.trim()).filter((id) => id);
-}
 
 class Cloner {
   /**
@@ -81,7 +79,6 @@ class Cloner {
     this.mongoDest = mongoDest;
     this.beforeAll = null;
     this.afterAll = null;
-    this.defaultSaltLength = 40;
     this.options = options;
     this.src = null;
     this.dest = null;
@@ -360,37 +357,6 @@ class Cloner {
       process.stdout.write(`${this.dryRunBuffer.join('\n')}\n`);
       this.dryRunBuffer = [];
     }
-  }
-
-  /**
-   * Derive the key and iv for a secret the way the server does.
-   * @param {string} secret - The secret to derive the key and iv from.
-   * @returns {{key: Buffer, iv: Buffer}} - The derived key and iv.
-   */
-  legacyKey(secret) {
-    return encryption.legacyKey(secret);
-  }
-
-  /**
-   * Encrypt data or settings using a secret.
-   * @param {*} secret
-   * @param {*} rawData
-   * @param {*} nosalt
-   * @returns
-   */
-  encrypt(secret, rawData, nosalt) {
-    return encryption.encrypt(secret, rawData, nosalt, this.defaultSaltLength);
-  }
-
-  /**
-   * Decrypt data or settings using a secret.
-   * @param {*} secret
-   * @param {*} cipherbuffer
-   * @param {*} nosalt
-   * @returns
-   */
-  decrypt(secret, cipherbuffer, nosalt) {
-    return encryption.decrypt(secret, cipherbuffer, nosalt, this.defaultSaltLength);
   }
 
   /**
@@ -1458,7 +1424,7 @@ class Cloner {
    * @param {string} destCollection - The collection the submissions are cloned to.
    */
   async warnAboutMisnamedCollection(form, destProj, subsCollection, destCollection) {
-    const misnamed = `${destProj.name}_${subsCollection}`;
+    const misnamed = legacySubmissionCollectionName(destProj.name, subsCollection);
     if (this.dryRun || misnamed === destCollection) {
       return;
     }
@@ -1704,13 +1670,13 @@ class Cloner {
     const values = [];
     encryption.eachEncryptedValue(encryptedComponents, src.data, (value, path) => values.push({value, path}));
     values.forEach(({value, path}) => {
-      const decrypted = this.decrypt(srcSecret, value);
+      const decrypted = encryption.decrypt(srcSecret, value);
 
       // A value that decrypts to 0, false or an empty string is still a value: only a decrypt
       // that actually failed comes back as null.
       const reEncrypted = (decrypted === null || decrypted === undefined)
         ? null
-        : this.encrypt(destSecret, decrypted);
+        : encryption.encrypt(destSecret, decrypted);
       if (!reEncrypted) {
         // Leave the value as it is rather than destroying it: it can still be read with the
         // secret it was encrypted with.
@@ -2097,7 +2063,7 @@ class Cloner {
     if (!decryptedSrcSettings) {
       return !!dest;
     }
-    const reEncrypted = this.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
+    const reEncrypted = encryption.encrypt(this.options.dstDbSecret, decryptedSrcSettings, true);
     if (reEncrypted) {
       update['settings_encrypted'] = reEncrypted;
     }
@@ -2134,7 +2100,7 @@ class Cloner {
 
     // A destination project without settings has no secret of its own yet.
     const decryptedDstSettings = (destProject && destProject['settings_encrypted'])
-      ? this.decrypt(this.options.dstDbSecret, destProject['settings_encrypted'], true)
+      ? encryption.decrypt(this.options.dstDbSecret, destProject['settings_encrypted'], true)
       : {};
     if (!decryptedDstSettings) {
       this.reportUndecryptable('destination', destProject, '--dst-db-secret');
@@ -2143,7 +2109,7 @@ class Cloner {
     if (decryptedDstSettings.secret) {
       this.dstSecret = decryptedDstSettings.secret;
     }
-    const decryptedSrcSettings = this.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
+    const decryptedSrcSettings = encryption.decrypt(this.options.srcDbSecret, srcProject['settings_encrypted'], true);
     if (!decryptedSrcSettings) {
       this.reportUndecryptable('source', srcProject, '--src-db-secret');
       return null;

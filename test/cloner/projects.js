@@ -3,17 +3,14 @@
 const assert = require('assert');
 const _ = require('lodash');
 const {ObjectId} = require('mongodb');
-const Cloner = require('../../src/Cloner');
 const {seedProject, at, project, role, form, submission, submissionRevision} = require('./fixtures');
 const {useTestDatabases, runClone, quiet} = require('./helper');
 
 /**
- * Build a bare cloner instance that can encrypt/decrypt without connecting to anything.
+ * The helpers that encrypt and decrypt the way the server does.
  */
 function crypter() {
-  const instance = Object.create(Cloner.prototype);
-  instance.defaultSaltLength = 40;
-  return instance;
+  return require('../../src/encryption');
 }
 
 describe('Project targeting', function() {

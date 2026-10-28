@@ -1,4 +1,5 @@
 'use strict';
+const path = require('path');
 
 /**
  * Hide the credentials of a connection string, so that they never end up in a log.
@@ -13,8 +14,8 @@ function redact(uri) {
  * certificate. The driver always uses the new url parser and the unified topology: from version 7 on
  * it rejects the options that used to turn them on.
  *
- * @param {string} caFile - The certificate authority file, relative to the working directory.
- * @param {string} certFile - The certificate key file, relative to the working directory.
+ * @param {string} caFile - The certificate authority file, absolute or relative to the working directory.
+ * @param {string} certFile - The certificate key file, absolute or relative to the working directory.
  * @returns {object} - The client options.
  */
 function tlsOptions(caFile, certFile) {
@@ -22,7 +23,7 @@ function tlsOptions(caFile, certFile) {
   if (caFile || certFile) {
     config.tls = true;
     if (caFile) {
-      config.tlsCAFile = `${process.cwd()}/${caFile}`;
+      config.tlsCAFile = path.resolve(caFile);
 
       // A custom certificate authority is usually an internal one whose certificates do not name
       // the host being connected to. A client certificate on its own is no reason to stop
@@ -30,7 +31,7 @@ function tlsOptions(caFile, certFile) {
       config.tlsAllowInvalidHostnames = true;
     }
     if (certFile) {
-      config.tlsCertificateKeyFile = `${process.cwd()}/${certFile}`;
+      config.tlsCertificateKeyFile = path.resolve(certFile);
     }
   }
   return config;
@@ -52,4 +53,25 @@ function submissionCollectionName(projectName, collection) {
   return `${project}_${String(collection).replace(/[^A-Za-z0-9]+/g, '')}`;
 }
 
-module.exports = {redact, tlsOptions, submissionCollectionName};
+/**
+ * The name earlier versions of the clone command gave the collection of a form with its own
+ * collection: the unsanitized project and collection names, where the server never reads them.
+ *
+ * @param {string} projectName - The name of the project.
+ * @param {string} collection - The collection setting of the form.
+ * @returns {string} - The collection name.
+ */
+function legacySubmissionCollectionName(projectName, collection) {
+  return `${projectName}_${collection}`;
+}
+
+/**
+ * Split a comma separated list of ids, ignoring the spaces around them and any repeated id.
+ * @param {string} value - The comma separated list.
+ * @returns {string[]} - The ids.
+ */
+function idList(value) {
+  return [...new Set(String(value || '').split(',').map((id) => id.trim()).filter((id) => id))];
+}
+
+module.exports = {redact, tlsOptions, submissionCollectionName, legacySubmissionCollectionName, idList};
