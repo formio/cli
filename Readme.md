@@ -290,6 +290,37 @@ yarn test:cloner
    They cover every clone flag, the dry run output, resuming an interrupted clone, and cloning from an API source
    (served by a stub API), against a real Mongo database.
 
+### Rekey
+
+    formio rekey <mongo_db> --new-db-secret=[NEW_SECRET] --old-db-secret=[OLD_SECRET] [--old-db-secret=[ANOTHER_OLD_SECRET]]
+
+   Re-encrypts the project settings and the encrypted submission data of a database with a new ```DB_SECRET```, for
+   example after a clone was run with the wrong ```--dst-db-secret```.
+
+   The project settings are encrypted with the ```DB_SECRET```. Encrypted submission data is encrypted with the
+   ```secret``` of its project settings or, when the project has none, with the ```DB_SECRET```. Every value is
+   first tried with the secret it should be encrypted with, and left alone when it already is. Otherwise each of
+   the old secrets is tried, and the value is re-encrypted and read back before it is written. Give every secret
+   the data may be encrypted with: after a clone that is both the wrong destination secret and the source secret.
+
+   | Option | What it does |
+   | --- | --- |
+   | ```--new-db-secret <secret>``` | The ```DB_SECRET``` the database should be encrypted with (required). |
+   | ```--old-db-secret <secret>``` | A secret the data may currently be encrypted with. Give it more than once to try several. |
+   | ```-p, --project <ids>``` | Only re-key these projects (comma separated). All projects by default. |
+   | ```--dry-run``` | Change nothing. Report how much would be re-keyed, and what cannot be decrypted. |
+   | ```--no-submission-revisions``` | Leave the submission revisions alone. |
+   | ```--batch-size <size>``` | The number of documents written at a time (default 1000). |
+   | ```--ca <file>```, ```--cert <file>``` | The TLS certificate authority and certificate key file for the connection. |
+
+   Back up the database, and stop the servers that use it, before re-keying: a server running with the wrong
+   secret keeps writing data encrypted with it. Start with a ```--dry-run```.
+
+   Values none of the secrets can decrypt are listed and left as they are, and the command exits with an error.
+   A project whose settings cannot be decrypted is skipped entirely, because the secret of its data is in those
+   settings. A document that changes while it is being re-keyed is never overwritten. Values that are already
+   encrypted with the new secret are skipped, so the command can be stopped and run again as often as needed.
+
 ### Deploy
 
    ```
