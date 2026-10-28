@@ -105,6 +105,37 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
    Clones a project from one database into another, and includes all forms, submissions, and every other resources within the project. This command
    also retains any _id's from the source database.
    
+### Clone Options
+
+   | Option | What it does |
+   | --- | --- |
+   | ```-s, --src-project <ids>``` | The source project id, or a comma separated list of them. |
+   | ```-d, --dst-project <id>``` | The destination project to clone into. |
+   | ```-p, --project <id>``` | Used as both the source and the destination project id. |
+   | ```--forms <ids>``` | Only clone these form ids. |
+   | ```--exclude <ids>``` | Skip these form ids, and their submissions. |
+   | ```-o, --submissions-only``` | Only clone submissions, leaving the forms of the destination alone. |
+   | ```-f, --delete-submissions``` | Delete the destination submissions of a form before cloning it. |
+   | ```-a, --all``` | Include deleted items. |
+   | ```--deleted-after <ms>``` | Also include items deleted after this UNIX timestamp, in milliseconds. |
+   | ```--created-after <ms>``` | Only clone items created after this UNIX timestamp, in milliseconds. |
+   | ```--modified-after <ms>``` | Only clone items modified after this UNIX timestamp, in milliseconds. |
+   | ```--include-form-revisions``` | Also clone form revisions. |
+   | ```--include-submission-revisions``` | Also clone submission revisions. |
+   | ```-u, --update-existing``` | Update the projects and forms the destination already has (the default). |
+   | ```--no-update-existing``` | Leave the projects and forms the destination already has untouched. |
+   | ```--update-existing-submissions``` | Also update submissions that already exist in the destination. |
+   | ```--dry-run``` | Change nothing, report what is missing from the destination or out of date there. |
+   | ```--extra``` | With ```--dry-run```, list the records themselves, not only the counts. |
+   | ```--batch-size <n>``` | Documents written at a time, and how often the resume point is saved (1000). |
+   | ```--max-batch-bytes <n>``` | Bytes of documents held in memory before writing them out (8388608). |
+   | ```--src-ca / --dst-ca <file>``` | The TLS certificate authority of the source / destination. |
+   | ```--src-cert / --dst-cert <file>``` | The TLS certificate key file of the source / destination. |
+   | ```--src-db-secret / --dst-db-secret``` | The DB_SECRET of the source / destination, for encrypted settings and fields. |
+   | ```--api-source``` | The source is an API url rather than a mongo connection string. |
+   | ```-k, --key <key>``` | The API key used to read from an API source. |
+   | ```-l, --limit <n>``` | How many records to request from the API at a time (1000). |
+
 ### Clone Multiple Projects
 
    It is also possible to clone multiple projects at the same time by providing a comma separated list of the project ids, like this.
@@ -113,15 +144,151 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
 
 ### Clone only records created after a certain date
 
-   You can also clone only the records that have been created after a certain ISO Timestamp. This is useful if you wish to perform multiple migrations and only wish to clone records since the last clone command was called.
+   You can also clone only the records that have been created after a certain UNIX timestamp, in milliseconds. This is useful if you wish to perform multiple migrations and only wish to clone records since the last clone command was called.
    
-    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --created-after=2342342342
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --created-after=1717200000000
 
 ### Clone Submissions
 
     formio clone -o <source_db> <destination_db> --src-project=[PROJECT_ID]
 
    This command only clones the submissions from one environment to another.
+
+### Clone only records deleted after a certain date
+
+   By default deleted records are skipped. ```--deleted-after``` additionally includes the records that were
+   deleted after the provided UNIX timestamp (in milliseconds), while ```--all``` includes every deleted record.
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --deleted-after=1717200000000
+
+### Clone Dry Run
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --dry-run
+
+   Changes nothing. It compares every submission of the source against the destination and reports what has not
+   arrived intact, a line per project and per form, ending with the totals:
+
+```
+project myproject (61051ac21bbda812c36dcbe8)
+  contactform (614484c56b5bd13268625b8b)
+    3 missing, 12 out of date
+
+Dry run complete. No changes were made to the destination.
+  missing from the destination : 3
+  out of date                  : 12
+```
+
+   The comparison covers every record of every form, not only the ones a clone would write, so it reports records an
+   earlier clone skipped even when they are older than the last record it cloned. Only the ids and the timestamps are
+   read, so it is quick and safe to run against forms holding large files.
+
+   Add ```--extra``` to list the records themselves: ```Created``` for one the destination does not have,
+   ```Updated``` for one that is there but is not the version the source holds, and ```Extra``` for one that only the
+   destination has.
+
+```
+project myproject (61051ac21bbda812c36dcbe8)
+  contactform (614484c56b5bd13268625b8b)
+    Created 5e7e0e1a0f0e4e0001c6f0a1 form=614484c56b5bd13268625b8b
+    Updated 5e7e0e1a0f0e4e0001c6f0a3 form=614484c56b5bd13268625b8b
+    1 missing, 1 out of date, 0 only in the destination
+```
+
+   Everything goes to stdout, so redirect it if you want to keep it:
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --dry-run --extra > audit.txt
+
+   A project that was asked for but is not in the source is named, rather than quietly skipped.
+
+### Clone Progress
+
+   Every project and form shows its position (```- Form: Contact (…) [12/340]```), and the submissions of
+   each form show a progress bar with the rate and the time left:
+
+```
+- Project Customer Portal: [1/1]
+   - Roles: 3
+   - Form: Contact (65f1…) [12/340]
+      - Submissions: [##########--------------] 41% 41,200/100,000 1,830/s ETA 32s
+      - Actions: 2
+```
+
+   In a terminal the bar is redrawn in place, at most ten times a second however fast the clone runs. When the
+   output goes to a file or a pipe, a progress line is written every 30 seconds instead. The totals come from a
+   count of what is left to clone; when a count takes more than 2 seconds (no index for it), the clone stops
+   counting and shows a running count instead. A dry run shows no progress.
+
+### Clone Performance
+
+   Documents are written to the destination in batches of 1000, which can be changed with ```--batch-size```. The
+   same number controls how often the clone state is saved, so a smaller batch resumes more precisely after an
+   interruption, and a larger batch writes faster.
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --batch-size=5000
+
+   Memory does not grow with the size of the database. The clone holds at most one batch of documents
+   at a time, capped both by ```--batch-size``` (1000 documents) and by ```--max-batch-bytes```
+   (8 MB), whichever comes first. Lower ```--max-batch-bytes``` if the submissions carry large files:
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --max-batch-bytes=2097152
+
+   With ```--update-existing-submissions```, the source is first read with only the timestamps that decide
+   whether a submission changed, and the data of a submission is read only when it is going to be written.
+   Re-running a clone where little has changed therefore reads almost nothing, however large the submissions are.
+
+   For large clones, make sure these indexes exist, otherwise Mongo sorts the submissions in memory:
+
+```
+// On the source database
+db.submissions.createIndex({form: 1, project: 1, created: 1});
+db.submissionrevisions.createIndex({_rid: 1});
+
+// On the destination database
+db.submissions.createIndex({form: 1, project: 1, created: -1});
+```
+
+   The clone keeps a ```clonestate.json``` file in the current directory, saved after every batch that is written,
+   so a clone that is interrupted (Ctrl+C), terminated or even killed outright continues from the last batch that
+   was written the next time it is run. A clone that finishes removes the file. Delete it to start over.
+
+### When a clone fails
+
+   A clone that could not write everything it read exits with an error naming how many documents were lost, and
+   keeps its ```clonestate.json``` so that running it again retries from the last document that was actually
+   written. It never reports success for data that did not arrive. Documents that already exist in the
+   destination (the same ```_id```) are not a failure: they are simply not cloned again. A document that conflicts
+   with a different destination document on another unique index is a failure.
+
+   Projects and forms are written as soon as they are cloned. When one cannot be written, nothing within it (its
+   roles, forms, actions or submissions) is cloned, so the destination never holds submissions of a form it does
+   not have.
+
+   A document that cannot be cloned (bad data, or a hook that throws) is reported and skipped, the rest of the
+   clone carries on, and the clone exits with an error at the end. The same programming error on several documents
+   in a row stops the clone straight away.
+
+   When ```--src-db-secret``` and ```--dst-db-secret``` differ, project settings are re-encrypted for the
+   destination. The settings a destination project already has are never replaced. A project whose settings cannot
+   be decrypted (a wrong secret) is not created in the destination, and the clone exits with an error naming it.
+
+### Resuming and Updating
+
+   By default the clone updates the projects and forms of the destination that have changed in the source. Use
+   ```--no-update-existing``` to leave everything that already exists in the destination untouched, and
+   ```--update-existing-submissions``` to also update submissions that already exist in the destination.
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --update-existing-submissions
+
+### Testing the clone command
+
+   The clone tests run against a throw-away Mongo container and do not need a license key:
+
+```
+yarn test:cloner
+```
+
+   They cover every clone flag, the dry run output, resuming an interrupted clone, and cloning from an API source
+   (served by a stub API), against a real Mongo database.
 
 ### Deploy
 

@@ -1,3 +1,5 @@
+'use strict';
+
 var header = true;
 module.exports = function(record, next) {
   if (header) {
