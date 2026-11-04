@@ -14,3 +14,14 @@ test/docker/data
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Local state, secrets and backups that must never be committed or published. The test env files that
+# are already tracked (test.env, test/docker/.env) stay tracked.
+settings-backup-*
+*.pem
+*.key
+.env*
+*.env
+
+# This project uses Yarn: an npm lockfile would only drift from yarn.lock.
+package-lock.json
