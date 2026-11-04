@@ -147,6 +147,32 @@ describe('Cloner units', function() {
       assert.equal(bare({}).shouldClone('submissions', src, dest), true);
     });
 
+    it('Should not clone when the destination item was modified after the source', function() {
+      const dest = {_id: new ObjectId(), created: new Date(1000), modified: new Date(2500)};
+      assert.equal(bare({}).shouldClone('submissions', src, dest), false);
+      assert.equal(bare({}).shouldClone('forms', src, dest), false);
+      assert.equal(bare({}).shouldClone('projects', src, dest), false);
+    });
+
+    it('Should only compare the modified times, not the created times', function() {
+      const older = {_id: new ObjectId(), created: new Date(500), modified: new Date(1500)};
+      const newer = {_id: new ObjectId(), created: new Date(500), modified: new Date(2500)};
+      assert.equal(bare({}).shouldClone('submissions', src, older), true);
+      assert.equal(bare({}).shouldClone('submissions', src, newer), false);
+    });
+
+    it('Should clone over a destination item that has no modified time', function() {
+      const dest = {_id: new ObjectId(), created: new Date(1000)};
+      assert.equal(bare({}).shouldClone('submissions', src, dest), true);
+    });
+
+    it('Should not clone a source item without a modified time over an existing one', function() {
+      const noModified = {_id: new ObjectId(), created: new Date(1000)};
+      const dest = {_id: new ObjectId(), created: new Date(1000), modified: new Date(500)};
+      assert.equal(bare({}).shouldClone('submissions', noModified, dest), false);
+      assert.equal(bare({}).shouldClone('submissions', noModified, null), true);
+    });
+
     it('Should only clone submissions when submissionsOnly is set', function() {
       const options = {submissionsOnly: true};
       assert.equal(bare(options).shouldClone('forms', src, null), false);
@@ -589,6 +615,7 @@ describe('Cloner units', function() {
       const item = {_id: 1, created: 1000, modified: 2000};
       assert.equal(instance.shouldClone('forms', item, {_id: 1, created: 1000, modified: 2000}), false);
       assert.equal(instance.shouldClone('forms', item, {_id: 1, created: 1000, modified: 1000}), true);
+      assert.equal(instance.shouldClone('forms', item, {_id: 1, created: 1000, modified: 3000}), false);
     });
   });
 

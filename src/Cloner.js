@@ -56,6 +56,7 @@ class Cloner {
    * @param {*} options.project - The source project to clone.
    * @param {*} options.srcProject - Alias for options.project.
    * @param {*} options.dstProject - The destination project to clone to.
+   * @param {*} options.includeStages - Also clone the stages of the source project(s).
    * @param {*} options.deletedAfter - Clone only data deleted after a certain date.
    * @param {*} options.createdAfter - Clone only data created after a certain date.
    * @param {*} options.modifiedAfter - Clone only data modified after a certain date.
@@ -84,6 +85,8 @@ class Cloner {
     this.dest = null;
     this.cloneState = {};
     this.exclude = idList(this.options.exclude);
+    // The stage projects found for the source project(s) when --include-stages is given.
+    this.stageProjects = [];
     // Existing projects and forms are updated unless they explicitly ask us not to.
     this.updateExisting = this.options.updateExisting !== false;
 
@@ -1025,12 +1028,29 @@ class Cloner {
         return false;
       }
 
-      // Make sure to not re-clone the same item it if has not been modified.
-      if (srcCreated === this.timestamp(destItem.created) && srcModified === this.timestamp(destItem.modified)) {
-        return false;
-      }
+      // The latest change wins: an item is only updated when the source was modified after the
+      // destination. An item that was changed in the destination since it was cloned, so that it is
+      // now newer than the source, is left alone.
+      return this.isNewer(srcModified, this.timestamp(destItem.modified));
     }
     return true;
+  }
+
+  /**
+   * Determine whether the source modified time is later than the destination modified time.
+   * @param {number} srcModified - The modified time of the source item, in milliseconds.
+   * @param {number} destModified - The modified time of the destination item, in milliseconds.
+   */
+  isNewer(srcModified, destModified) {
+    if (Number.isNaN(srcModified)) {
+      // Without a modified time the source cannot be shown to be newer.
+      return false;
+    }
+    if (Number.isNaN(destModified)) {
+      // A destination item without a modified time is older than any source item that has one.
+      return true;
+    }
+    return srcModified > destModified;
   }
 
   /**
@@ -1356,7 +1376,7 @@ class Cloner {
     else if (!this.oss) {
       // An open source source database has no projects, so a project id can only be naming the
       // destination: matching the source items against it would find nothing at all.
-      const sourceProjects = idList(this.sourceProject);
+      const sourceProjects = idList(this.sourceProject).concat(this.stageProjects);
       if (sourceProjects.length === 1) {
         query._id = new ObjectId(sourceProjects[0]);
       }
@@ -2144,8 +2164,10 @@ class Cloner {
    * Close all items within a project.
    * @param {*} srcProject - The source project
    * @param {*} destProject - The destination project.
+   * @param {boolean} destinationExisted - Whether the destination project was there before this clone.
+   * @param {boolean} projectUpdated - Whether the destination project is being updated from the source.
    */
-  async cloneProjectItems(srcProject, destProject, destinationExisted = true) {
+  async cloneProjectItems(srcProject, destProject, destinationExisted = true, projectUpdated = true) {
     if (!destProject) {
       throw new Error('Destination project not found for this cloning operation.');
     }
@@ -2189,7 +2211,7 @@ class Cloner {
       // The access is migrated here because it can only be mapped once the roles exist. A project
       // that was just created still needs it; --no-update-existing only protects what was already
       // in the destination.
-      if (!this.dryRun && (this.updateExisting || !destinationExisted)) {
+      if (!this.dryRun && (!destinationExisted || (this.updateExisting && projectUpdated))) {
         await this.dest.projects.updateOne(
           {_id: destProject._id},
           {$set: {access: destProject.access}}
@@ -2249,6 +2271,27 @@ class Cloner {
         'Provide a single --src-project, or clone without a --dst-project.'
       );
     }
+    if (this.options.includeStages) {
+      if (!sourceProjects.length) {
+        throw new Error('--include-stages requires a source project: provide --src-project or --project.');
+      }
+      if (this.options.dstProject) {
+        throw new Error(
+          '--include-stages cannot be used with --dst-project: each stage is cloned into its own project.'
+        );
+      }
+      if (this.options.submissionsOnly) {
+        throw new Error('--include-stages cannot be used with --submissions-only.');
+      }
+      if (this.options.apiSource) {
+        throw new Error('--include-stages cannot be used with --api-source.');
+      }
+      if (this.oss) {
+        throw new Error(
+          '--include-stages cannot be used with an open source (OSS) source database, which has no stages.'
+        );
+      }
+    }
     if (this.oss && this.options.srcProject) {
       // Note that --project is not checked here: it names the destination project as well, and is
       // how an OSS database is cloned into a project.
@@ -2257,6 +2300,36 @@ class Cloner {
         '--src-project cannot be used with it.'
       );
     }
+  }
+
+  /**
+   * Find the stages of the source project(s), so that they are cloned along with them. A stage is a
+   * project whose "project" property points at its primary project.
+   */
+  async resolveStages() {
+    this.stageProjects = [];
+    if (!this.options.includeStages) {
+      return;
+    }
+    const primaries = idList(this.sourceProject);
+    // Be tolerant of databases that stored the parent project id as a string.
+    const parents = primaries.flatMap((id) => [new ObjectId(id), id]);
+    const stages = await this.src.projects
+      .find(this.itemQuery({project: {$in: parents}, type: 'stage'}))
+      .project({_id: 1, title: 1, name: 1})
+      .sort({created: 1, _id: 1})
+      .toArray();
+    this.stageProjects = stages
+      .map((stage) => stage._id.toString())
+      .filter((id) => !primaries.includes(id));
+    if (!this.stageProjects.length) {
+      this.status('\nNo stages were found for the source project(s).');
+      return;
+    }
+    this.status(`\nIncluding ${this.stageProjects.length} stage(s):`);
+    stages
+      .filter((stage) => this.stageProjects.includes(stage._id.toString()))
+      .forEach((stage) => this.status(`\n  - ${stage.title || stage.name} (${stage._id})`));
   }
 
   /**
@@ -2340,7 +2413,9 @@ class Cloner {
         return;
       }
 
-      await this.cloneProjectItems(src, dest, !!existing);
+      // The access of a project is only replaced when the project itself is: a destination project
+      // that is newer than the source keeps its own.
+      await this.cloneProjectItems(src, dest, !!existing, !existing || this.shouldClone('projects', src, existing));
       await this.cloneTags(src, dest);
     });
   }
@@ -2405,6 +2480,7 @@ class Cloner {
       );
     }
     else {
+      await this.resolveStages();
       await this.cloneProject();
     }
     await this.flushWrites();

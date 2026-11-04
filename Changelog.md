@@ -1,3 +1,12 @@
+## 3.1.0 - 2026-11-04
+### Added
+ - ```--include-stages``` option for the clone command, to clone the stages of the source project(s) along with them.
+
+### Changed
+ - The clone command only updates a record that exists in the destination when it was modified in the source after
+   it was modified in the destination, so changes made in the destination since the last clone are no longer
+   overwritten. The access of a destination project is only replaced when the project itself is updated.
+
 ## 3.0.0 - 2026-10-28
 ### Breaking Changes
  - Node.js 22.12.0 or newer is required.

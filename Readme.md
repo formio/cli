@@ -124,6 +124,7 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
    | ```-s, --src-project <ids>``` | The source project id, or a comma separated list of them. |
    | ```-d, --dst-project <id>``` | The destination project to clone into. |
    | ```-p, --project <id>``` | Used as both the source and the destination project id. |
+   | ```--include-stages``` | Also clone every stage of the source project(s). |
    | ```--forms <ids>``` | Only clone these form ids. |
    | ```--exclude <ids>``` | Skip these form ids, and their submissions. |
    | ```-o, --submissions-only``` | Only clone submissions, leaving the forms of the destination alone. |
@@ -153,6 +154,15 @@ formio migrate https://myproject.form.io project https://forms.mydomain.com/mypr
    It is also possible to clone multiple projects at the same time by providing a comma separated list of the project ids, like this.
    
     formio clone <source_db> <destination_db> --src-project=234234234234,345345345345345,45456456456456
+
+### Clone a Project with its Stages
+
+   Add ```--include-stages``` to clone the stages of a project along with it. Every project of the source whose
+   ```project``` is set to the source project id, and whose type is ```stage```, is cloned as well, each into its own
+   project. Deleted stages are only included with ```--all``` or ```--deleted-after```. It works with several source
+   projects too, but not with ```--dst-project```, ```--submissions-only``` or ```--api-source```.
+
+    formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --include-stages
 
 ### Clone only records created after a certain date
 
@@ -317,6 +327,10 @@ db.submissions.createIndex({form: 1, project: 1, created: -1});
    ```--update-existing-submissions``` to also update submissions that already exist in the destination.
 
     formio clone <source_db> <destination_db> --src-project=[PROJECT_ID] --update-existing-submissions
+
+   The latest change wins: a record that already exists in the destination is only updated when its ```modified```
+   time in the source is later than in the destination. A record that was changed in the destination after the
+   source is left as it is, and so is the access of a project that is not updated.
 
 ### Rekey
 

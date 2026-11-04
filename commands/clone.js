@@ -15,6 +15,7 @@ module.exports = function(program, next) {
     .option('-f, --delete-submissions', 'Delete all submissions on the receiving form before cloning', false)
     .option('-s, --src-project <project_id,...>', 'The Source project ID, or comma separated projects for multiple')
     .option('-d, --dst-project <project_id>', 'The Destination project ID')
+    .option('--include-stages', 'Also clone every stage of the source project(s): the projects whose "project" is set to a source project.', false)
     .option('-p, --project <project_id>', 'The project ID that you wish to clone from one database to another.')
     .option('--forms <forms>', 'A comma-separated value of all the Form ID\'s you wish to clone. If included, then only the provided forms will be cloned.', false)
     .option('--exclude <forms>', 'A comma-separated value of all the Form ID\'s you wish to exclude in the clone process.', false)

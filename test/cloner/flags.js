@@ -401,4 +401,63 @@ describe('Clone flags', function() {
       assert.equal(await dbs.dst.count('submissions'), 2);
     });
   });
+
+  describe('Latest change wins', function() {
+    it('Should leave records that were changed in the destination after the source', async function() {
+      const seed = await seedProject(dbs.src, {forms: 1, submissions: 1});
+      const authenticated = seed.roles.find((r) => r.title === 'Authenticated');
+      await quiet(() => runClone({}));
+
+      // The destination is edited after the clone, later than the source changes below.
+      await dbs.src.collection('projects').updateOne({_id: seed.project._id},
+        {$set: {title: 'Source Project', modified: at(800)}});
+      await dbs.src.collection('forms').updateOne({_id: seed.forms[0]._id},
+        {$set: {title: 'Source Form', modified: at(800)}});
+      await dbs.src.collection('submissions').updateOne({_id: seed.submissions[0]._id},
+        {$set: {data: {firstName: 'Source'}, modified: at(800)}});
+      await dbs.dst.collection('projects').updateOne({_id: seed.project._id},
+        {$set: {title: 'Destination Project', modified: at(900), access: [
+          {type: 'create_all', roles: [authenticated._id]}
+        ]}});
+      await dbs.dst.collection('forms').updateOne({_id: seed.forms[0]._id},
+        {$set: {title: 'Destination Form', modified: at(900)}});
+      await dbs.dst.collection('submissions').updateOne({_id: seed.submissions[0]._id},
+        {$set: {data: {firstName: 'Destination'}, modified: at(900)}});
+
+      await quiet(() => runClone({updateExistingSubmissions: true}));
+
+      const project = await dbs.dst.findOne('projects', {_id: seed.project._id});
+      assert.equal(project.title, 'Destination Project');
+      assert.equal(project.access.length, 1, 'The destination project access must be kept.');
+      assert.equal(project.access[0].type, 'create_all');
+      assert.equal((await dbs.dst.findOne('forms', {_id: seed.forms[0]._id})).title, 'Destination Form');
+      const sub = await dbs.dst.findOne('submissions', {_id: seed.submissions[0]._id});
+      assert.equal(sub.data.firstName, 'Destination');
+    });
+
+    it('Should update records that were changed in the source after the destination', async function() {
+      const seed = await seedProject(dbs.src, {forms: 1, submissions: 1});
+      await quiet(() => runClone({}));
+
+      await dbs.dst.collection('projects').updateOne({_id: seed.project._id},
+        {$set: {title: 'Destination Project', modified: at(800)}});
+      await dbs.dst.collection('forms').updateOne({_id: seed.forms[0]._id},
+        {$set: {title: 'Destination Form', modified: at(800)}});
+      await dbs.dst.collection('submissions').updateOne({_id: seed.submissions[0]._id},
+        {$set: {data: {firstName: 'Destination'}, modified: at(800)}});
+      await dbs.src.collection('projects').updateOne({_id: seed.project._id},
+        {$set: {title: 'Source Project', modified: at(900)}});
+      await dbs.src.collection('forms').updateOne({_id: seed.forms[0]._id},
+        {$set: {title: 'Source Form', modified: at(900)}});
+      await dbs.src.collection('submissions').updateOne({_id: seed.submissions[0]._id},
+        {$set: {data: {firstName: 'Source'}, modified: at(900)}});
+
+      await quiet(() => runClone({updateExistingSubmissions: true}));
+
+      assert.equal((await dbs.dst.findOne('projects', {_id: seed.project._id})).title, 'Source Project');
+      assert.equal((await dbs.dst.findOne('forms', {_id: seed.forms[0]._id})).title, 'Source Form');
+      const sub = await dbs.dst.findOne('submissions', {_id: seed.submissions[0]._id});
+      assert.equal(sub.data.firstName, 'Source');
+    });
+  });
 });

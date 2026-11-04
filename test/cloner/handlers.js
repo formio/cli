@@ -1,7 +1,7 @@
 /* globals describe, it */
 'use strict';
 const assert = require('assert');
-const {seedProject, project, submissionRevision, formRevision, tag} = require('./fixtures');
+const {seedProject, at, project, submissionRevision, formRevision, tag} = require('./fixtures');
 const {useTestDatabases, createCloner, runClone, quiet} = require('./helper');
 
 describe('Callbacks and handlers', function() {
@@ -148,7 +148,7 @@ describe('Callbacks and handlers', function() {
     const seed = await seedProject(dbs.src, {forms: 1, submissions: 1});
     // There must be something to migrate, otherwise nothing would touch the missing array.
     await dbs.src.collection('projects').updateOne({_id: seed.project._id},
-      {$set: {access: [{type: 'create_all', roles: [seed.roles[0]._id]}]}});
+      {$set: {access: [{type: 'create_all', roles: [seed.roles[0]._id]}], modified: at(900)}});
     // A document written by an older version of the servers, without the field at all.
     const destProject = project(Object.assign({}, seed.project));
     delete destProject.access;

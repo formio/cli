@@ -90,6 +90,101 @@ describe('Project targeting', function() {
     });
   });
 
+  describe('--include-stages', function() {
+    /**
+     * Seed a primary project with a stage, a deleted stage, a tenant and an unrelated project.
+     */
+    async function seedStages() {
+      const primary = await seedProject(dbs.src, {forms: 1, submissions: 1, project: {title: 'Primary'}});
+      const stage = await seedProject(dbs.src, {forms: 2, submissions: 1, project: {
+        title: 'Stage', type: 'stage', project: primary.project._id
+      }});
+      // Some databases store the parent project id as a string.
+      const stringStage = await seedProject(dbs.src, {forms: 1, submissions: 1, project: {
+        title: 'String Stage', type: 'stage', project: primary.project._id.toString()
+      }});
+      await seedProject(dbs.src, {forms: 1, submissions: 1, project: {
+        title: 'Deleted Stage', type: 'stage', project: primary.project._id, deleted: Date.now()
+      }});
+      await seedProject(dbs.src, {forms: 1, submissions: 1, project: {
+        title: 'Tenant', type: 'tenant', project: primary.project._id
+      }});
+      await seedProject(dbs.src, {forms: 1, submissions: 1, project: {title: 'Other'}});
+      return {primary, stage, stringStage};
+    }
+
+    it('Should clone the primary project along with its stages', async function() {
+      const {primary, stage} = await seedStages();
+
+      await quiet(() => runClone({
+        srcProject: primary.project._id.toString(),
+        includeStages: true
+      }));
+
+      const titles = (await dbs.dst.all('projects')).map((proj) => proj.title).sort();
+      assert.deepEqual(titles, ['Primary', 'Stage', 'String Stage']);
+      const clonedStage = await dbs.dst.findOne('projects', {_id: stage.project._id});
+      assert.equal(clonedStage.project.toString(), primary.project._id.toString(),
+        'The stage must still point at its primary project.');
+      assert.equal(await dbs.dst.count('forms', {project: stage.project._id}), 2);
+      assert.equal(await dbs.dst.count('submissions'), 4);
+    });
+
+    it('Should work with --project as well as --src-project', async function() {
+      const {primary} = await seedStages();
+
+      await quiet(() => runClone({
+        project: primary.project._id.toString(),
+        includeStages: true
+      }));
+
+      assert.equal(await dbs.dst.count('projects'), 3);
+    });
+
+    it('Should only clone the primary project without --include-stages', async function() {
+      const {primary} = await seedStages();
+
+      await quiet(() => runClone({srcProject: primary.project._id.toString()}));
+
+      const titles = (await dbs.dst.all('projects')).map((proj) => proj.title);
+      assert.deepEqual(titles, ['Primary']);
+    });
+
+    it('Should include deleted stages with --all', async function() {
+      const {primary} = await seedStages();
+
+      await quiet(() => runClone({
+        srcProject: primary.project._id.toString(),
+        includeStages: true,
+        all: true
+      }));
+
+      const titles = (await dbs.dst.all('projects')).map((proj) => proj.title).sort();
+      assert.deepEqual(titles, ['Deleted Stage', 'Primary', 'Stage', 'String Stage']);
+    });
+
+    it('Should fail clearly without a source project', async function() {
+      await seedStages();
+      await assert.rejects(
+        () => quiet(() => runClone({includeStages: true})),
+        /requires a source project/i
+      );
+    });
+
+    it('Should fail clearly with a destination project', async function() {
+      const {primary} = await seedStages();
+      const destProject = await dbs.dst.insert('projects', project({title: 'Destination'}));
+      await assert.rejects(
+        () => quiet(() => runClone({
+          srcProject: primary.project._id.toString(),
+          dstProject: destProject._id.toString(),
+          includeStages: true
+        })),
+        /--include-stages cannot be used with --dst-project/
+      );
+    });
+  });
+
   describe('Project access', function() {
     it('Should migrate the project access onto the destination roles', async function() {
       const seed = await seedProject(dbs.src, {forms: 1, submissions: 0});
