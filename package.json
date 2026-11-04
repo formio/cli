@@ -14,6 +14,20 @@
   "bin": {
     "formio": "./bin/formio"
   },
+  "files": [
+    "/bin/",
+    "/commands/",
+    "/src/",
+    "/examples/",
+    "/index.js",
+    "/Changelog.md",
+    "!**/clonestate.json",
+    "!**/settings-backup-*",
+    "!**/*.env",
+    "!**/.env*",
+    "!**/*.pem",
+    "!**/*.key"
+  ],
   "engines": {
     "node": ">=22.12.0"
   },

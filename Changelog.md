@@ -6,6 +6,8 @@
  - The clone command only updates a record that exists in the destination when it was modified in the source after
    it was modified in the destination, so changes made in the destination since the last clone are no longer
    overwritten. The access of a destination project is only replaced when the project itself is updated.
+ - Only the files the CLI needs are published to npm (a "files" list in package.json, and an .npmignore). Earlier
+   versions also published the tests, the CI and editor settings, and any untracked files in the working directory.
 
 ## 3.0.0 - 2026-10-28
 ### Breaking Changes

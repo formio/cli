@@ -1,0 +1,26 @@
+# The "files" field of package.json lists what is published. This file is a safety net for anything
+# that ends up inside those folders but must never be published.
+
+# Local state, secrets and backups.
+clonestate.json
+*.env
+.env*
+settings-backup-*
+*.pem
+*.key
+
+# Development files.
+test/
+scripts/
+.github/
+.vscode/
+.idea/
+.yarn/
+eslint.config.js
+.yarnrc.yml
+yarn.lock
+package-lock.json
+npm-debug.log
+.DS_Store
+.dccache
+node_modules/
