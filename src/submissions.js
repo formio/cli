@@ -19,10 +19,10 @@ module.exports =  function(options, next) {
   };
 
   if (options.dstOptions.key) {
-    requestHeaders['x-token'] = options.key;
+    requestHeaders['x-token'] = options.dstOptions.key;
   }
   else if (options.dstOptions.adminKey) {
-    requestHeaders['x-admin-key'] = options.adminKey;
+    requestHeaders['x-admin-key'] = options.dstOptions.adminKey;
   }
 
   // Create the submission request.

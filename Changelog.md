@@ -1,3 +1,9 @@
+## Unreleased
+### Fixed
+ - The submissions command authenticates with the destination key. ```--dst-key``` / ```--dstKey``` and
+   ```--dst-admin-key``` / ```--dstAdminKey``` are sent as ```x-token``` and ```x-admin-key```. A destination-only
+   key was previously sent as the text "undefined", and a global ```--key``` was sent instead of the destination key.
+
 ## 3.1.0 - 2026-11-04
 ### Added
  - ```--include-stages``` option for the clone command, to clone the stages of the source project(s) along with them.

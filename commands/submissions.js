@@ -10,6 +10,8 @@ module.exports = function(program, next) {
     .option('-h, --host [host]', 'Set the host for the copy.')
     .option('--key [key]', 'The API Key to provide to the destination forms.')
     .option('--admin-key [key]', 'The Admin API Key to provide to the destination forms')
+    .option('--dst-key, --dstKey [key]', 'The API Key to provide to the destination form.')
+    .option('--dst-admin-key, --dstAdminKey [key]', 'The Admin API Key to provide to the destination form.')
     .action(series([
       require('../src/authenticate')({
         dst: 0
