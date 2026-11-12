@@ -1,3 +1,16 @@
+## [Unreleased]
+### Fixed
+ - A clone no longer loses the rest of a form when the source drops its cursor (```CursorNotFound```), which a
+   slow batch, such as one cloning submission revisions, could outlast. The cursor is opened again after the last
+   document it read.
+ - A document that could not be cloned no longer stops the resume point from moving for the rest of the clone. The
+   clone state now lists the documents (and the forms and projects they belong to) to retry, and the next clone
+   retries those along with whatever comes after the resume point, rather than starting over.
+ - A clone of several projects by id (```--include-stages```), or of several forms (```--forms```), now resumes where
+   it left off instead of starting again from the first project or form.
+ - A clone that resumes a previous one says so, and the ```[n/total]``` positions of its projects and forms only
+   count what it has left, rather than starting from 1 of everything as if it had started over.
+
 ## 3.1.0 - 2026-11-04
 ### Added
  - ```--include-stages``` option for the clone command, to clone the stages of the source project(s) along with them.

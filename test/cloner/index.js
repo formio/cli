@@ -15,6 +15,7 @@ describe('Cloner', function() {
   require('./racing');
   require('./memory');
   require('./errors');
+  require('./recovery');
   require('./api');
   require('./operations');
   require('./progress');

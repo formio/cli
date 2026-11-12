@@ -41,6 +41,24 @@ const MAX_REPEATED_ERRORS = 5;
 const POSITION_COUNT_TIMEOUT = 2000;
 const BAR_COUNT_TIMEOUT = 60000;
 
+// The server drops a cursor that is not read from for a while (10 minutes by default), which a slow
+// batch, such as one cloning the revisions of every submission, easily outlasts. The cursor is then
+// opened again after the last document it handed over, but only this many times in a row without it
+// handing over anything in between.
+const MAX_CURSOR_REOPENS = 5;
+
+// The order every iteration walks its documents in, which is also what lets it carry on after the
+// last document it read.
+const DEFAULT_SORT = {created: 1, _id: 1};
+
+/**
+ * Whether an error says the server no longer knows the cursor being read.
+ * @param {Error} err - The error.
+ */
+function isCursorNotFound(err) {
+  return !!err && (err.code === 43 || err.codeName === 'CursorNotFound');
+}
+
 class Cloner {
   /**
    * @param {*} srcPath - The source connection string.
@@ -119,6 +137,10 @@ class Cloner {
 
     // Nested iterations that have finished, but whose writes are only flushed with their parent's.
     this.completedState = new Set();
+
+    // What a failure has to be pinned on: the iterations under way and the documents they are on,
+    // the ones whose resume point must not move again in this run, and the documents to retry.
+    this.initFailureTracking();
 
     // The progress line being drawn, if any. In a terminal it is redrawn in place, so anything else
     // written while it is shown has to end it first.
@@ -378,12 +400,11 @@ class Cloner {
    * @param {*} query - The query to use to find the documents.
    * @param {*} cb - The callback to call for each document.
    */
-  async each(collection, query, cb, sort = {created: 1, _id: 1}, options = {}) {
+  async each(collection, query, cb, sort = DEFAULT_SORT, options = {}) {
     // The resume point is scoped to what is actually being iterated: the submissions of one form,
     // not "the submissions collection", which is walked once per form.
     const stateKey = options.stateKey || collection;
     const needsLookup = options.needsLookup !== false;
-    const failuresBefore = this.writeFailures;
 
     // When the destination is checked document by document, the source is first read with only the
     // timestamps that decide whether a document has to be cloned again. The documents that do are
@@ -391,67 +412,313 @@ class Cloner {
     // sent over the wire at all.
     // An afterAll handler is handed every source document, so it always gets them in full.
     const timestampsOnly = needsLookup && !this.afterAll && !!this.destProjection(collection);
+
+    // Where a previous clone left off, and the documents it could not clone, which are read again
+    // along with everything after that point.
+    const resumedFrom = this.cloneState[stateKey] || null;
+    const retrying = new Set(this.retryIds(stateKey));
     const where = this.resumeQuery(stateKey, query);
     const count = options.count ? () => this.countSource(collection, where) : null;
     const progress = await this.startProgress(options.label, count);
-    const cursor = _.get(this, collection)
-      .find(where)
-      .sort(sort)
-      .batchSize(Math.min(this.writeBufferSize, 1000));
-    if (timestampsOnly) {
-      cursor.project(TIMESTAMP_FIELDS);
-    }
+    const cursor = this.openCursor(collection, where, sort, timestampsOnly ? TIMESTAMP_FIELDS : null);
 
-    while (await cursor.hasNext()) {
-      // When the destination has to be looked up, the documents are walked in chunks so that the
-      // lookup is one query per chunk instead of one query per document. Without a lookup there is
-      // nothing to gain by holding documents in memory, so they are streamed one at a time.
-      const chunk = await this.readChunk(cursor, needsLookup);
-      if (needsLookup) {
-        await this.warmDestinationCache(collection, chunk);
-      }
-      const source = timestampsOnly ? this.sourceReader(collection, chunk) : null;
-      for (const projected of chunk) {
-        const doc = source ? await source(projected) : projected;
-        if (!doc) {
-          // It disappeared from the source while this clone was reading it.
-          this.vanished = (this.vanished || 0) + 1;
-          this.error(`${this.collectionName(collection)} ${projected._id} is no longer in the source, skipped.`);
-          this.tick(progress);
-          continue;
+    // A failure is pinned on the document each iteration under way is on.
+    const frame = {stateKey, current: null, deferFlush: !!options.deferFlush};
+    this.iterations.push(frame);
+    try {
+      while (await cursor.hasNext()) {
+        // When the destination has to be looked up, the documents are walked in chunks so that the
+        // lookup is one query per chunk instead of one query per document. Without a lookup there is
+        // nothing to gain by holding documents in memory, so they are streamed one at a time.
+        const chunk = await this.readChunk(cursor, needsLookup);
+        if (needsLookup) {
+          await this.warmDestinationCache(collection, chunk);
         }
-
-        // eslint-disable-next-line callback-return
-        await cb(doc);
-        this.tick(progress);
-
-        // The progress is only committed to the clone state once the writes it belongs to have been
-        // flushed, so an interrupted clone never skips a document that was queued but never written.
-        this.pendingState[stateKey] = {
-          created: (doc.created ? new Date(doc.created) : new Date(0)).toISOString(),
-          _id: doc._id ? doc._id.toString() : null
-        };
+        await this.cloneChunk(collection, chunk, cb, {frame, progress, timestampsOnly, resumedFrom, retrying});
+        this.destCaches.delete(this.collectionName(collection));
       }
-      this.destCaches.delete(this.collectionName(collection));
+    }
+    catch (err) {
+      // Whatever this iteration did not get to is cloned next time, from its last saved point.
+      this.freezeState(stateKey);
+      delete this.pendingState[stateKey];
+      this.endProgress(progress);
+      throw err;
+    }
+    finally {
+      this.iterations.splice(this.iterations.lastIndexOf(frame), 1);
+      cursor.close();
     }
 
     if (options.deferFlush) {
       // A nested iteration (the revisions of one submission) leaves its writes to be flushed with
       // the ones of its parent, so that the batching is not undone for every single parent. Its
-      // resume point is forgotten once that flush succeeds.
+      // resume point is settled once that flush is done.
       this.completedState.add(stateKey);
     }
     else {
       // The writes are flushed by their own size and count thresholds while the documents are
       // walked; this is the final flush of whatever is left over.
       await this.flushWrites();
-      if (this.writeFailures === failuresBefore) {
-        // Only forget the resume point when everything this iteration produced was actually written.
-        delete this.cloneState[stateKey];
-      }
+      this.settleState(stateKey);
     }
     delete this.pendingState[stateKey];
     this.endProgress(progress);
+  }
+
+  /**
+   * Clone a chunk of the documents of an iteration.
+   *
+   * @param {string} collection - The source collection.
+   * @param {Array} chunk - The documents, as they were read.
+   * @param {Function} cb - The callback to call for each document.
+   * @param {object} walk - The iteration: its frame, its progress, whether only the timestamps of
+   *                        the documents were read, where it resumed from and what it retries.
+   */
+  async cloneChunk(collection, chunk, cb, {frame, progress, timestampsOnly, resumedFrom, retrying}) {
+    const source = timestampsOnly ? this.sourceReader(collection, chunk) : null;
+    for (const projected of chunk) {
+      frame.current = projected._id ? projected._id.toString() : null;
+      const doc = source ? await source(projected) : projected;
+      if (doc) {
+        // eslint-disable-next-line callback-return
+        await cb(doc);
+        this.advance(frame.stateKey, doc, resumedFrom, retrying);
+      }
+      else {
+        // It disappeared from the source while this clone was reading it.
+        this.vanished = (this.vanished || 0) + 1;
+        this.error(`${this.collectionName(collection)} ${projected._id} is no longer in the source, skipped.`);
+      }
+      this.tick(progress);
+    }
+  }
+
+  /**
+   * Open a cursor on the source that survives the server dropping it. A cursor that is not read from
+   * for too long (a slow batch of documents) is forgotten by the server; it is then opened again
+   * after the last document it handed over, which the (created, _id) order makes exact.
+   *
+   * @param {string} collection - The source collection, such as "src.submissions".
+   * @param {object} where - The query.
+   * @param {object} sort - The order of the documents.
+   * @param {object|null} projection - The fields to read, or null for all of them.
+   * @returns {{hasNext: Function, next: Function, close: Function}} - The cursor.
+   */
+  openCursor(collection, where, sort = DEFAULT_SORT, projection = null) {
+    const source = _.get(this, collection);
+    const reopenable = _.isEqual(sort, DEFAULT_SORT);
+    let cursor = null;
+    let last = null;
+    let reopens = 0;
+    const open = () => {
+      cursor = source
+        .find(last ? this.afterDocument(where, last) : where)
+        .sort(sort)
+        .batchSize(Math.min(this.writeBufferSize, 1000));
+      if (projection) {
+        cursor.project(projection);
+      }
+    };
+    const read = async(operation) => {
+      for (;;) {
+        try {
+          return await operation();
+        }
+        catch (err) {
+          if (!reopenable || !isCursorNotFound(err) || reopens >= MAX_CURSOR_REOPENS) {
+            throw err;
+          }
+          reopens++;
+          this.error(
+            `The source dropped the cursor of the ${this.collectionName(collection)} while a batch was being ` +
+            'cloned. Reading on from the last one read.'
+          );
+          cursor.close().catch(() => {});
+          open();
+        }
+      }
+    };
+    open();
+    return {
+      hasNext: () => read(() => cursor.hasNext()),
+      next: async() => {
+        const doc = await read(() => cursor.next());
+        if (doc) {
+          last = doc;
+          reopens = 0;
+        }
+        return doc;
+      },
+      close: () => {
+        cursor.close().catch(() => {});
+      }
+    };
+  }
+
+  /**
+   * Narrow a query to the documents that come after a document, in (created, _id) order. Documents
+   * without a creation date come first in that order.
+   *
+   * @param {object} query - The query.
+   * @param {object} doc - The document.
+   */
+  afterDocument(query, doc) {
+    const keyset = (doc.created === null || doc.created === undefined)
+      ? {$or: [{created: {$ne: null}}, {created: null, _id: {$gt: doc._id}}]}
+      : {$or: [{created: {$gt: doc.created}}, {created: doc.created, _id: {$gt: doc._id}}]};
+    return Object.assign({}, query, {$and: (query.$and || []).concat([keyset])});
+  }
+
+  /**
+   * Prepare what a failure is pinned on. Safe to call more than once.
+   */
+  initFailureTracking() {
+    // The iterations under way, outermost first, each with the document it is on.
+    this.iterations = [];
+
+    // The iterations whose resume point must not move again in this run: a batch of their writes
+    // was lost, or they stopped part way.
+    this.frozenState = new Set();
+
+    // Per iteration, the documents that could not be cloned in this run.
+    this.failedItems = new Map();
+
+    // Per iteration, the documents of its retry list that were cloned in this run. They leave the
+    // list once their writes are flushed.
+    this.retriedItems = new Map();
+  }
+
+  /**
+   * The key the documents an iteration has to retry are saved under.
+   * @param {string} stateKey - The key of the iteration.
+   */
+  retryKey(stateKey) {
+    return `retry:${stateKey}`;
+  }
+
+  /**
+   * The documents an iteration has to retry.
+   * @param {string} stateKey - The key of the iteration.
+   * @returns {string[]} - Their ids.
+   */
+  retryIds(stateKey) {
+    const ids = this.cloneState[this.retryKey(stateKey)];
+    return Array.isArray(ids) ? ids : [];
+  }
+
+  /**
+   * Whether a resume point is after another one.
+   * @param {object} point - The resume point, as saved.
+   * @param {object|string} other - The resume point it is compared to, as saved.
+   */
+  isAfter(point, other) {
+    const otherCreated = Date.parse(typeof other === 'string' ? other : other.created);
+    const created = Date.parse(point.created);
+    if (created !== otherCreated) {
+      return created > otherCreated;
+    }
+    const otherId = typeof other === 'string' ? null : other._id;
+    return !!(point._id && otherId && point._id > otherId);
+  }
+
+  /**
+   * Move the resume point of an iteration past a document it cloned.
+   *
+   * @param {string} stateKey - The key of the iteration.
+   * @param {object} doc - The document.
+   * @param {object|null} resumedFrom - Where the iteration started from.
+   * @param {Set} retrying - The ids it was asked to retry.
+   */
+  advance(stateKey, doc, resumedFrom, retrying) {
+    const id = doc._id ? doc._id.toString() : null;
+    const point = {
+      created: (doc.created ? new Date(doc.created) : new Date(0)).toISOString(),
+      _id: id
+    };
+
+    // The progress is only committed to the clone state once the writes it belongs to have been
+    // flushed, so an interrupted clone never skips a document that was queued but never written.
+    // A document retried from before the resume point does not move it back.
+    if (!resumedFrom || this.isAfter(point, resumedFrom)) {
+      this.pendingState[stateKey] = point;
+    }
+    if (id && retrying.has(id)) {
+      if (!this.retriedItems.has(stateKey)) {
+        this.retriedItems.set(stateKey, new Set());
+      }
+      this.retriedItems.get(stateKey).add(id);
+    }
+  }
+
+  /**
+   * Stop the resume point of an iteration from moving again in this run, so that the next clone
+   * goes over what it covered from its last saved point.
+   * @param {string} stateKey - The key of the iteration.
+   */
+  freezeState(stateKey) {
+    this.frozenState.add(stateKey);
+  }
+
+  /**
+   * Retry, next time, the document each iteration under way is on: one of them could not be cloned,
+   * so neither could the documents it belongs to. Their iterations carry on past them.
+   * @param {number} depth - Only the iterations up to this one, outermost first.
+   */
+  retryCurrent(depth = this.iterations.length) {
+    this.iterations.slice(0, depth).forEach(({stateKey, current}) => {
+      if (!current) {
+        return;
+      }
+      if (!this.failedItems.has(stateKey)) {
+        this.failedItems.set(stateKey, new Set());
+      }
+      this.failedItems.get(stateKey).add(current);
+      const key = this.retryKey(stateKey);
+      const ids = this.retryIds(stateKey);
+      if (!ids.includes(current)) {
+        this.cloneState[key] = ids.concat([current]);
+      }
+    });
+  }
+
+  /**
+   * A batch of queued writes was lost. It is not known which documents it held, only that they
+   * belong to the innermost iteration that flushes its own writes, or to the ones nested in it. Those
+   * stop moving their resume point; the documents their parents are on are retried.
+   */
+  writesLost() {
+    const flushing = _.findLastIndex(this.iterations, (frame) => !frame.deferFlush);
+    if (flushing === -1) {
+      // Nothing to pin it on: hold back every resume point that is waiting on this flush.
+      Object.keys(this.pendingState).forEach((stateKey) => this.freezeState(stateKey));
+    }
+    else {
+      this.iterations.slice(flushing).forEach(({stateKey}) => this.freezeState(stateKey));
+      this.retryCurrent(flushing);
+    }
+    this.completedState.forEach((stateKey) => this.freezeState(stateKey));
+  }
+
+  /**
+   * Settle the saved state of an iteration that went through all of its documents, once its writes
+   * are flushed. One that cloned everything is forgotten. One that could not keeps its resume point
+   * and the documents to retry, so the next clone only goes over those and whatever is newer.
+   * @param {string} stateKey - The key of the iteration.
+   */
+  settleState(stateKey) {
+    const key = this.retryKey(stateKey);
+    if (this.frozenState.has(stateKey)) {
+      return;
+    }
+    const failed = this.failedItems.get(stateKey);
+    if (failed && failed.size) {
+      // Everything else it was asked to retry was read again, and either cloned or failed again.
+      this.cloneState[key] = Array.from(failed);
+      return;
+    }
+    delete this.cloneState[stateKey];
+    delete this.cloneState[key];
   }
 
   /**
@@ -555,14 +822,22 @@ class Cloner {
    */
   resumeQuery(stateKey, query) {
     const state = this.cloneState[stateKey];
-    if (query._id || !state) {
+
+    // A query for one document by id has nothing to resume. A list of them (a project and its
+    // stages, or --forms) is walked like any other iteration.
+    const singleId = query._id && !(_.isPlainObject(query._id) && query._id.$in);
+    if (singleId || !state) {
       return query;
     }
     const created = new Date(typeof state === 'string' ? state : state.created);
     const lastId = (typeof state === 'string') ? null : this.convertToObjectId(state._id);
-    const keyset = lastId
-      ? {$or: [{created: {$gt: created}}, {created: created, _id: {$gt: lastId}}]}
-      : {created: {$gt: created}};
+    const after = lastId
+      ? [{created: {$gt: created}}, {created: created, _id: {$gt: lastId}}]
+      : [{created: {$gt: created}}];
+
+    // The documents a previous clone could not clone are read again, wherever they are.
+    const retry = this.retryIds(stateKey).map((id) => this.convertToObjectId(id) || id);
+    const keyset = {$or: retry.length ? after.concat([{_id: {$in: retry}}]) : after};
     return Object.assign({}, query, {$and: (query.$and || []).concat([keyset])});
   }
 
@@ -638,6 +913,32 @@ class Cloner {
         });
     }
     return progress;
+  }
+
+  /**
+   * Count what is left of an iteration, for the position shown next to each of its items. A clone
+   * that resumes a previous one says so, and counts only what it still has to go over, so that its
+   * positions starting from 1 do not read as the clone having started over.
+   *
+   * @param {string} collection - The source collection, such as "src.forms".
+   * @param {string} stateKey - The key the progress of the iteration is saved under.
+   * @param {object} query - The documents of the iteration.
+   * @param {string} label - What is being iterated, such as "   - Forms".
+   * @returns {number|null} - How many documents are left, or null when it is not known.
+   */
+  async remaining(collection, stateKey, query, label) {
+    if (this.dryRun) {
+      return null;
+    }
+    const where = this.resumeQuery(stateKey, query);
+    const total = await this.countSource(collection, where, POSITION_COUNT_TIMEOUT);
+    if (where !== query) {
+      const retry = this.retryIds(stateKey).length;
+      const left = (total === null) ? '' : `: ${total} left`;
+      const retrying = retry ? `, ${retry} of them to retry` : '';
+      this.status(`\n${label} resumed from the previous clone${left}${retrying}.`);
+    }
+    return total;
   }
 
   /**
@@ -755,6 +1056,9 @@ class Cloner {
    * @param {string} collection - An optional single collection to flush.
    */
   async flushWrites(collection = null) {
+    if (!this.iterations) {
+      this.initFailureTracking();
+    }
     const names = collection ? [collection] : Object.keys(this.writeBuffer);
     const everything = !collection;
     for (const name of names) {
@@ -764,16 +1068,39 @@ class Cloner {
       }
       const {target, operations} = buffer;
       this.writeBuffer[name] = {target: this.dest[name], operations: [], bytes: 0};
-      await this.bulkWrite(name, target, operations);
+      if (!(await this.bulkWrite(name, target, operations))) {
+        // The resume point of what these writes belong to must not move past them.
+        this.writesLost();
+      }
     }
-    if (this.writeFailed || !everything) {
-      // Once a write has been lost the resume point must not move past it, and a flush of a single
-      // collection says nothing about the documents still queued for the others.
+    if (!everything) {
+      // A flush of a single collection says nothing about the documents still queued for the others.
       return;
     }
-    Object.assign(this.cloneState, this.pendingState);
-    this.completedState.forEach((stateKey) => delete this.cloneState[stateKey]);
+    Object.entries(this.pendingState).forEach(([stateKey, point]) => {
+      if (!this.frozenState.has(stateKey)) {
+        this.cloneState[stateKey] = point;
+      }
+    });
+    this.completedState.forEach((stateKey) => this.settleState(stateKey));
     this.completedState.clear();
+
+    // The documents retried from a retry list are off it, now that their writes are done, unless
+    // they failed again.
+    this.retriedItems.forEach((ids, stateKey) => {
+      if (this.frozenState.has(stateKey)) {
+        return;
+      }
+      const failed = this.failedItems.get(stateKey) || new Set();
+      const remaining = this.retryIds(stateKey).filter((id) => !ids.has(id) || failed.has(id));
+      if (remaining.length) {
+        this.cloneState[this.retryKey(stateKey)] = remaining;
+      }
+      else {
+        delete this.cloneState[this.retryKey(stateKey)];
+      }
+    });
+    this.retriedItems.clear();
 
     // The resume point is saved as it moves, so that even a clone that is killed outright can be
     // resumed from the last batch that was written.
@@ -882,8 +1209,13 @@ class Cloner {
   recordDocumentFailure(collection, id, err) {
     this.documentFailures++;
 
-    // The resume point must not move past a document that was never cloned.
+    // The document, and the ones it belongs to, are retried by the next clone. The iterations carry
+    // on past them.
     this.writeFailed = true;
+    if (!this.iterations) {
+      this.initFailureTracking();
+    }
+    this.retryCurrent();
     this.error(`Error creating ${collection} ${id}`, err);
     if (!(err instanceof TypeError || err instanceof ReferenceError)) {
       this.repeatedError = null;
@@ -1170,7 +1502,13 @@ class Cloner {
       }}
       : {insertOne: {document: updatedItem}};
     if (PARENT_COLLECTIONS.includes(collection)) {
-      return await this.bulkWrite(collection, this.dest[collection], [operation]);
+      const written = await this.bulkWrite(collection, this.dest[collection], [operation]);
+      if (!written) {
+        // It is the document the innermost iteration is on: it, and the ones it belongs to, are
+        // retried by the next clone.
+        this.retryCurrent();
+      }
+      return written;
     }
     await this.queueWrite(collection, operation, this.documentSize(updatedItem));
     return true;
@@ -1724,7 +2062,7 @@ class Cloner {
     // written already are not an error: they are simply not inserted again.
     const stateKey = `src.submissions:${srcForm._id}`;
     const retryKey = `retry.submissions:${srcForm._id}`;
-    const resuming = !!(this.cloneState[stateKey] || this.cloneState[retryKey]);
+    const resuming = !!(this.cloneState[stateKey] || this.cloneState[retryKey] || this.retryIds(stateKey).length);
     const failuresBefore = this.writeFailures + this.documentFailures;
 
     // Determine the last one cloned, and ensure that we only fetch submissions after that date.
@@ -1743,7 +2081,44 @@ class Cloner {
       : null
     );
 
-    // Clone the submissions.
+    // Clone the submissions. Should that stop part way, the form is marked to be retried below.
+    let completed = false;
+    try {
+      await this.cloneFormSubmissions(srcForm, destForm, encryptedComponents, query, compareAll);
+      completed = true;
+    }
+    finally {
+      if (!this.dryRun) {
+        if (!completed || this.writeFailures + this.documentFailures > failuresBefore) {
+          // Some were lost. The resume point is not moved past them, but there may be none at all,
+          // so mark the form to be retried from its resume point, or from its first submission.
+          this.cloneState[retryKey] = true;
+        }
+        else {
+          delete this.cloneState[retryKey];
+        }
+      }
+    }
+
+    if (this.dryRun && this.options.extra) {
+      if (this.options.apiSource) {
+        this.error('--extra cannot be used with --api-source: the source cannot be queried by id.');
+      }
+      else {
+        await this.reportExtraSubmissions(srcForm, destForm);
+      }
+    }
+  }
+
+  /**
+   * Walk the submissions of a form that have to be cloned.
+   * @param {*} srcForm - The source form.
+   * @param {*} destForm - The destination form.
+   * @param {*} encryptedComponents - The components of the form that are encrypted, if any.
+   * @param {object} query - The submissions to walk.
+   * @param {boolean} compareAll - Whether each one is compared with the destination.
+   */
+  async cloneFormSubmissions(srcForm, destForm, encryptedComponents, query, compareAll) {
     await this.upsertAll('submissions', query, null, async(src, update) => {
       update.form = destForm._id;
       update.project = destForm.project;
@@ -1763,26 +2138,6 @@ class Cloner {
       label: '      - Submissions:',
       count: true
     });
-
-    if (!this.dryRun) {
-      if (this.writeFailures + this.documentFailures > failuresBefore) {
-        // Some were lost. The resume point is not moved past them, but there may be none at all,
-        // so mark the form to be retried from its resume point, or from its first submission.
-        this.cloneState[retryKey] = true;
-      }
-      else {
-        delete this.cloneState[retryKey];
-      }
-    }
-
-    if (this.dryRun && this.options.extra) {
-      if (this.options.apiSource) {
-        this.error('--extra cannot be used with --api-source: the source cannot be queried by id.');
-      }
-      else {
-        await this.reportExtraSubmissions(srcForm, destForm);
-      }
-    }
   }
 
   /**
@@ -1882,7 +2237,8 @@ class Cloner {
   async cloneForms(srcProject, destProject) {
     let encryptedComponents = null;
     const query = this.formQuery(srcProject);
-    const total = this.dryRun ? null : await this.countSource('src.forms', query, POSITION_COUNT_TIMEOUT);
+    const scope = _.get(srcProject, '_id', 'oss').toString();
+    const total = await this.remaining('src.forms', `src.forms:${scope}`, query, '   - Forms');
     let position = 0;
     await this.upsertAll('forms', query, (form) => {
       position++;
@@ -1919,6 +2275,7 @@ class Cloner {
         // again. A resume point left by an interrupted clone would skip the ones before it.
         delete this.cloneState[`src.submissions:${srcForm._id}`];
         delete this.cloneState[`retry.submissions:${srcForm._id}`];
+        delete this.cloneState[this.retryKey(`src.submissions:${srcForm._id}`)];
       }
       this.currentForm = srcForm;
       await this.flushWrites();
@@ -1932,7 +2289,7 @@ class Cloner {
         await this.flushDryRun();
         this.reportDryRunForm();
       }
-    }, {scope: _.get(srcProject, '_id', 'oss').toString()});
+    }, {scope});
   }
 
   async cloneRoles(srcProject, destProject) {
@@ -2374,9 +2731,7 @@ class Cloner {
     const formioProject = await this.dest.projects.findOne({name: 'formio'});
     const formioOwner = formioProject ? formioProject.owner : null;
     const query = this.projectQuery();
-    const total = this.dryRun
-      ? null
-      : await this.countSource('src.projects', {...query, name: {$ne: 'formio'}}, POSITION_COUNT_TIMEOUT);
+    const total = await this.remaining('src.projects', 'src.projects', {...query, name: {$ne: 'formio'}}, '- Projects');
     let position = 0;
     await this.upsertAll('projects', query, (project) => {
       if (project.name === 'formio') {
