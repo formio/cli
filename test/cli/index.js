@@ -58,6 +58,81 @@ function run(...args) {
   });
 }
 
+/**
+ * Run destination authentication and the submissions request, capturing the headers.
+ * Uses the real modules, not the command stubs.
+ * @param {object} options - CLI options, including params.
+ * @returns {Promise<object>} The headers of the submissions request.
+ */
+function submissionHeaders(options) {
+  const requestFile = require.resolve('request');
+  const previousRequest = require.cache[requestFile];
+  const seen = [];
+  require.cache[requestFile] = {
+    id: requestFile,
+    filename: requestFile,
+    loaded: true,
+    exports(reqOptions) {
+      seen.push(reqOptions);
+      return {
+        pipe() {
+          return this;
+        },
+        on(event, cb) {
+          if (event === 'close') {
+            process.nextTick(cb);
+          }
+          return this;
+        }
+      };
+    }
+  };
+
+  const submissionsFile = require.resolve(path.join(root, 'src/submissions.js'));
+  const authFile = require.resolve(path.join(root, 'src/authenticate.js'));
+  const stubbedSubmissions = require.cache[submissionsFile];
+  const stubbedAuth = require.cache[authFile];
+  delete require.cache[submissionsFile];
+  delete require.cache[authFile];
+  const submissions = require(submissionsFile);
+  const authenticate = require(authFile);
+  const log = console.log;
+  const write = process.stdout.write;
+  console.log = () => {};
+  process.stdout.write = () => true;
+
+  const restore = () => {
+    console.log = log;
+    process.stdout.write = write;
+    require.cache[submissionsFile] = stubbedSubmissions;
+    require.cache[authFile] = stubbedAuth;
+    if (previousRequest) {
+      require.cache[requestFile] = previousRequest;
+    }
+    else {
+      delete require.cache[requestFile];
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    authenticate({dst: 0})(options, (err) => {
+      if (err) {
+        restore();
+        reject(err);
+        return;
+      }
+      submissions(options, (submitErr) => {
+        restore();
+        if (submitErr) {
+          reject(submitErr);
+          return;
+        }
+        resolve(seen[0] && seen[0].headers);
+      });
+    });
+  });
+}
+
 describe('Command line', function() {
   before('Stub out everything that talks to a server', function() {
     stub('src/authenticate.js', (config) => (options, next) => {
@@ -217,6 +292,22 @@ describe('Command line', function() {
       assert.deepEqual(options.params, ['https://src.example.com/form', 'each.js']);
     });
 
+    it('Should accept a destination key distinct from the global key', async function() {
+      await run('submissions', 'https://target.form.io/myform',
+        '--key', 'GLOBALKEY', '--dst-key', 'REALKEY', '--dst-admin-key', 'DESTADMIN');
+      let options = calls[1].options;
+      assert.equal(options.key, 'GLOBALKEY');
+      assert.equal(options.dstKey, 'REALKEY');
+      assert.equal(options.dstAdminKey, 'DESTADMIN');
+
+      calls = [];
+      await run('submissions', 'https://target.form.io/myform', '--dstKey', 'REALKEY', '--dstAdminKey', 'DESTADMIN');
+      options = calls[1].options;
+      assert.equal(options.key, undefined);
+      assert.equal(options.dstKey, 'REALKEY');
+      assert.equal(options.dstAdminKey, 'DESTADMIN');
+    });
+
     it('Should pass a failing step on as the error of the command', async function() {
       stub('src/deploy.js', (options, next) => next(new Error('the deploy failed')));
       try {
@@ -225,6 +316,54 @@ describe('Command line', function() {
       finally {
         stub('src/deploy.js', step('deploy'));
       }
+    });
+  });
+
+  describe('submissions authentication headers', function() {
+    const form = 'https://target.form.io/myform';
+
+    it('Should send the destination API key when no global key is set', async function() {
+      const headers = await submissionHeaders({
+        params: [form],
+        dstKey: 'REALKEY'
+      });
+      assert.equal(headers['x-token'], 'REALKEY');
+      assert.equal(headers['x-admin-key'], undefined);
+    });
+
+    it('Should send the destination API key when a different global key is also set', async function() {
+      const headers = await submissionHeaders({
+        params: [form],
+        key: 'GLOBALKEY',
+        dstKey: 'REALKEY'
+      });
+      assert.equal(headers['x-token'], 'REALKEY');
+    });
+
+    it('Should send the destination admin key when no global admin key is set', async function() {
+      const headers = await submissionHeaders({
+        params: [form],
+        dstAdminKey: 'DESTADMIN'
+      });
+      assert.equal(headers['x-admin-key'], 'DESTADMIN');
+      assert.equal(headers['x-token'], undefined);
+    });
+
+    it('Should send the destination admin key when a different global admin key is also set', async function() {
+      const headers = await submissionHeaders({
+        params: [form],
+        adminKey: 'GLOBALADMIN',
+        dstAdminKey: 'DESTADMIN'
+      });
+      assert.equal(headers['x-admin-key'], 'DESTADMIN');
+    });
+
+    it('Should keep sending the global API key', async function() {
+      const headers = await submissionHeaders({
+        params: [form],
+        key: 'GLOBALKEY'
+      });
+      assert.equal(headers['x-token'], 'GLOBALKEY');
     });
   });
 

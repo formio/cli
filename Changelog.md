@@ -1,5 +1,8 @@
-## [Unreleased]
+## Unreleased
 ### Fixed
+ - The submissions command authenticates with the destination key. ```--dst-key``` / ```--dstKey``` and
+   ```--dst-admin-key``` / ```--dstAdminKey``` are sent as ```x-token``` and ```x-admin-key```. A destination-only
+   key was previously sent as the text "undefined", and a global ```--key``` was sent instead of the destination key.
  - A clone no longer loses the rest of a form when the source drops its cursor (```CursorNotFound```), which a
    slow batch, such as one cloning submission revisions, could outlast. The cursor is opened again after the last
    document it read.

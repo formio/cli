@@ -435,6 +435,8 @@ exports a function, which is called with ```(submission, index, options, next)``
 | --- | --- |
 | ```--key <key>``` | The API key of the project. |
 | ```--admin-key <key>``` | The admin API key of the server. |
+| ```--dst-key <key>``` | The API key of the destination project. Also accepted as ```--dstKey```. Used instead of ```--key``` when both are set. |
+| ```--dst-admin-key <key>``` | The admin API key of the destination server. Also accepted as ```--dstAdminKey```. |
 
 Examples:
 
