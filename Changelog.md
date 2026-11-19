@@ -1,4 +1,9 @@
 ## [Unreleased]
+### Breaking Changes
+ - Providing a TLS CA file for clone or rekey no longer disables MongoDB hostname verification.
+   A connection that must accept a certificate issued for another name can set
+   ```tlsAllowInvalidHostnames=true``` on that connection string.
+
 ### Fixed
  - A clone no longer loses the rest of a form when the source drops its cursor (```CursorNotFound```), which a
    slow batch, such as one cloning submission revisions, could outlast. The cursor is opened again after the last
@@ -9,7 +14,7 @@
  - A clone of several projects by id (```--include-stages```), or of several forms (```--forms```), now resumes where
    it left off instead of starting again from the first project or form.
  - A clone that resumes a previous one says so, and the ```[n/total]``` positions of its projects and forms only
-   count what it has left, rather than starting from 1 of everything as if it had started over.
+   count what it has left, rather than starting from 1 of everything as if it had started over.git status
 
 ## 3.1.0 - 2026-11-04
 ### Added

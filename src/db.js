@@ -23,12 +23,11 @@ function tlsOptions(caFile, certFile) {
   if (caFile || certFile) {
     config.tls = true;
     if (caFile) {
+      // Trust the given authority, and still require the certificate to name the host.
+      // A deployment whose certificate does not name the host can set
+      // tlsAllowInvalidHostnames on the connection string. Setting it here would
+      // accept any name that authority has signed.
       config.tlsCAFile = path.resolve(caFile);
-
-      // A custom certificate authority is usually an internal one whose certificates do not name
-      // the host being connected to. A client certificate on its own is no reason to stop
-      // verifying who we are talking to.
-      config.tlsAllowInvalidHostnames = true;
     }
     if (certFile) {
       config.tlsCertificateKeyFile = path.resolve(certFile);
