@@ -117,15 +117,17 @@ describe('Cloner units', function() {
         'A client certificate is no reason to stop checking who we are connected to.');
     });
 
-    it('Should allow an internal certificate authority to name another host', function() {
+    it('Should keep verifying the host name when a certificate authority is given', function() {
       const config = bare({srcCa: 'ca.pem'}).dbConfig('src');
-      assert.equal(config.tlsAllowInvalidHostnames, true);
+      assert.notEqual(config.tlsAllowInvalidHostnames, true,
+        'Trusting a certificate authority is no reason to accept a certificate issued for another host.');
     });
 
     it('Should use both a certificate authority and a certificate', function() {
       const config = bare({dstCa: 'ca.pem', dstCert: 'cert.pem'}).dbConfig('dst');
       assert.equal(config.tlsCAFile, `${process.cwd()}/ca.pem`);
       assert.equal(config.tlsCertificateKeyFile, `${process.cwd()}/cert.pem`);
+      assert.notEqual(config.tlsAllowInvalidHostnames, true);
     });
   });
 

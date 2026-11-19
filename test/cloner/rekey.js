@@ -185,6 +185,7 @@ describe('Rekey', function() {
       assert.equal(tlsOptions('/etc/ssl/ca.pem').tlsCAFile, '/etc/ssl/ca.pem');
       assert.equal(tlsOptions(null, '/etc/ssl/cert.pem').tlsCertificateKeyFile, '/etc/ssl/cert.pem');
       assert.equal(tlsOptions('ca.pem').tlsCAFile, require('path').join(process.cwd(), 'ca.pem'));
+      assert.notEqual(tlsOptions('ca.pem').tlsAllowInvalidHostnames, true);
     });
   });
 
